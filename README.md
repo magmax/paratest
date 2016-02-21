@@ -18,4 +18,4 @@ Plugins should implement the next interface:
 
 - ``find(path)``: returns a list of test unique names ("TID", or "Test ID"), searching from ``path``.
 - ``init_environment(id)``: initializes the environment with unique id ``id``.
-- ``run(tid): receives one TID returned by ``find`` in order to execute it.
+- ``run(tid)``: receives one TID returned by ``find`` in order to execute it.
