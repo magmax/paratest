@@ -1,0 +1,9 @@
+[Core]
+Name = Dummy
+Module = dummy
+
+[Documentation]
+Author = Miguel Angel Garcia
+Version = 0.1
+Website = http://magmax.org
+Description = Dummy plugin for ParaTest

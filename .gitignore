@@ -1,0 +1,12 @@
+venv/
+static/
+assets/vendor/
+**/.cache/
+
+.coverage
+*~
+*.pyc
+\#*
+\.\#*
+db.sqlite3
+*/celerybeat-schedule
