@@ -30,9 +30,9 @@ def main():
                         choices=('plugins', 'run'),
                         help='Action to perform')
     parser.add_argument(
-        '--path',
+        '--source',
         default='.',
-        help='Path where tests are placed in.',
+        help='Path to tests',
     )
     parser.add_argument(
         '--path-plugins',
@@ -45,10 +45,10 @@ def main():
         help='Plugin to be activated',
     )
     parser.add_argument(
-        '-n', '--environments',
+        '-w', '--workspaces',
         type=int,
         default=5,
-        help="Number of environments to be created",
+        help="Number of workspaces to be created (tests in parallel)",
     )
     parser.add_argument(
         '-v', '--verbosity',
@@ -87,7 +87,20 @@ def main():
 
     args = parser.parse_args()
     configure_logging(args.verbosity)
-    return process(args)
+    scripts = Scripts(
+        setup=args.setup,
+        setup_workspace=args.setup_workspace,
+        setup_test=args.setup_test,
+        teardown_test=args.teardown_test,
+        teardown_workspace=args.teardown_workspace,
+        teardown=args.teardown,
+    )
+    paratest = Paratest(args.workspaces, scripts, args.source)
+    if args.action == 'plugins':
+        return paratest.list_plugins()
+    if args.action == 'run':
+        return paratest.run(args.plugin)
+    return paratest.process(args)
 
 
 def run_script(script):
@@ -102,38 +115,52 @@ def run_script(script):
     return result.returncode
 
 
-def process(args):
-    simplePluginManager = PluginManager()
-    simplePluginManager.setPluginInfoExtension('paratest')
-    simplePluginManager.setPluginPlaces(["plugins", ""])
-    simplePluginManager.collectPlugins()
+class Scripts(object):
+    def __init__(self, setup, setup_workspace, setup_test, teardown_test, teardown_workspace, teardown):
+        self.setup = setup
+        self.setup_workspace = setup_workspace
+        self.setup_test = setup_test
+        self.teardown_test = teardown_test
+        self.teardown_workspace = teardown_workspace
+        self.teardown = teardown
 
-    if args.action == 'plugins':
+
+class Paratest(object):
+    def __init__(self, workspace_num, scripts, source_path):
+        self.workspace_num = workspace_num
+        self.scripts = scripts
+        self.source_path = source_path
+        self.pluginmgr = PluginManager()
+        self.pluginmgr.setPluginInfoExtension('paratest')
+        self.pluginmgr.setPluginPlaces(["plugins", ""])
+        self.pluginmgr.collectPlugins()
+
+    def list_plugins(self):
         msg = "Available plugins are:\n"
-        for plugin in simplePluginManager.getAllPlugins():
+        for plugin in self.pluginmgr.getAllPlugins():
             msg += "  %s" % plugin.name
         print(msg)
-        return
 
-    if args.action == 'run':
-        plugin = simplePluginManager.getPluginByName(args.plugin)
+
+    def run(self, plugin):
+        plugin = self.pluginmgr.getPluginByName(plugin)
         po = plugin.plugin_object
 
-        if run_script(args.setup):
+        if run_script(self.scripts.setup):
             raise Abort('The setup script failed. aborting.')
         workers = []
         tids = 0
-        for tid in po.find(args.path):
+        for tid in po.find(self.source_path):
             shared_queue.put(tid)
             tids += 1
 
-        for i in range(min(args.environments, tids)):
+        for i in range(min(self.workspace_num, tids)):
             t = Worker(
                 po,
-                setup=args.setup_workspace,
-                setup_test=args.setup_test,
-                teardown_test=args.teardown_test,
-                teardown=args.teardown_workspace,
+                setup=self.scripts.setup_workspace,
+                setup_test=self.scripts.setup_test,
+                teardown_test=self.scripts.teardown_test,
+                teardown=self.scripts.teardown_workspace,
                 name=str(i),
             )
             workers.append(t)
@@ -145,7 +172,7 @@ def process(args):
         logger.debug("wait for all workers to finish")
         for t in workers:
             t.join()
-        if run_script(args.teardown):
+        if run_script(self.scripts.teardown):
             raise Abort('The teardown script failed, but nothing can be done.')
 
         if not shared_queue.empty():
