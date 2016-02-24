@@ -130,6 +130,7 @@ class Paratest(object):
         self.workspace_num = workspace_num
         self.scripts = scripts
         self.source_path = source_path
+        self._workers = []
         self.pluginmgr = PluginManager()
         self.pluginmgr.setPluginInfoExtension('paratest')
         self.pluginmgr.setPluginPlaces(["plugins", ""])
@@ -144,37 +145,58 @@ class Paratest(object):
 
     def run(self, plugin):
         plugin = self.pluginmgr.getPluginByName(plugin)
-        po = plugin.plugin_object
+        pluginobj = plugin.plugin_object
 
+        self.run_script_setup()
+        test_number = self.queue_tests(pluginobj)
+        self.create_workers(pluginobj, self.num_of_workers(test_number))
+        self.start_workers()
+        self.wait_workers()
+        self.run_script_teardown()
+        self.assert_all_messages_were_processed()
+
+    def run_script_setup(self):
         if run_script(self.scripts.setup):
             raise Abort('The setup script failed. aborting.')
-        workers = []
+
+    def run_script_teardown(self):
+        if run_script(self.scripts.teardown):
+            raise Abort('The teardown script failed, but nothing can be done.')
+
+    def queue_tests(self, pluginobj):
         tids = 0
-        for tid in po.find(self.source_path):
+        for tid in pluginobj.find(self.source_path):
             shared_queue.put(tid)
             tids += 1
+        return tids
 
-        for i in range(min(self.workspace_num, tids)):
+    def create_workers(self, pluginobj, workers):
+        for i in range(workers):
             t = Worker(
-                po,
+                pluginobj,
                 setup=self.scripts.setup_workspace,
                 setup_test=self.scripts.setup_test,
                 teardown_test=self.scripts.teardown_test,
                 teardown=self.scripts.teardown_workspace,
                 name=str(i),
             )
-            workers.append(t)
+            self._workers.append(t)
 
+    def num_of_workers(self, test_number):
+        return min(self.workspace_num, test_number)
+
+    def start_workers(self):
         logger.debug("start workers")
-        for t in workers:
+        for t in self._workers:
             t.start()
             shared_queue.put(None)
-        logger.debug("wait for all workers to finish")
-        for t in workers:
-            t.join()
-        if run_script(self.scripts.teardown):
-            raise Abort('The teardown script failed, but nothing can be done.')
 
+    def wait_workers(self):
+        logger.debug("wait for all workers to finish")
+        for t in self._workers:
+            t.join()
+
+    def assert_all_messages_were_processed(self):
         if not shared_queue.empty():
             raise Abort('There were unprocessed tests, but all workers are dead. Aborting.')
 
