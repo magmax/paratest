@@ -103,9 +103,11 @@ def main():
     return paratest.process(args)
 
 
-def run_script(script):
+def run_script(script, **kwargs):
     if not script:
         return
+    for k, v in kwargs.items():
+        script = script.replace('{%s}' % k, v)
     logger.debug("About to run script %s", script)
     result = subprocess.run(script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.stdout:
@@ -214,18 +216,30 @@ class Worker(threading.Thread):
         logger.debug("%s START" % self.name)
         self.plugin.init_environment(1)
         item = object()
-        if run_script(self.setup):
-            raise Abort('Setup workspace failed on worker %s and could not initialize the environment. Worker is dead')
+        self.run_script_setup()
         while item:
-            if run_script(self.setup_test):
-                raise Abort("setup_test failed on worker %s. Worker is dead", self.name)
+            self.run_script_setup_test()
             item = shared_queue.get()
             self.process(item)
             shared_queue.task_done()
-            if run_script(self.teardown_test):
-                raise Abort("teardown_test failed on worker %s. Worker is dead", self.name)
-        if run_script(self.teardown):
+            self.run_script_teardown_test()
+        self.run_script_teardown()
+
+    def run_script_setup(self):
+        if run_script(self.setup, workspace=self.name):
+            raise Abort('Setup workspace failed on worker %s and could not initialize the environment. Worker is dead')
+
+    def run_script_teardown(self):
+        if run_script(self.teardown, workspace=self.name):
             raise Abort('Teardown workspace failed on worker %s. Worker is dead')
+
+    def run_script_setup_test(self):
+        if run_script(self.setup_test, workspace=self.name):
+                raise Abort("setup_test failed on worker %s. Worker is dead", self.name)
+
+    def run_script_teardown_test(self):
+        if run_script(self.teardown_test, workspace=self.name):
+            raise Abort("teardown_test failed on worker %s. Worker is dead", self.name)
 
     def process(self, tid):
         if tid is None:
