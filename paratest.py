@@ -176,10 +176,7 @@ class Paratest(object):
         for i in range(workers):
             t = Worker(
                 pluginobj,
-                setup=self.scripts.setup_workspace,
-                setup_test=self.scripts.setup_test,
-                teardown_test=self.scripts.teardown_test,
-                teardown=self.scripts.teardown_workspace,
+                scripts=self.scripts,
                 name=str(i),
             )
             self._workers.append(t)
@@ -204,41 +201,38 @@ class Paratest(object):
 
 
 class Worker(threading.Thread):
-    def __init__(self, plugin, setup, setup_test, teardown, teardown_test, *args, **kwargs):
+    def __init__(self, plugin, scripts, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.plugin = plugin
-        self.setup = setup
-        self.setup_test = setup_test
-        self.teardown = teardown
-        self.teardown_test = teardown_test
+        self.scripts = scripts
 
     def run(self):
         logger.debug("%s START" % self.name)
         self.plugin.init_environment(1)
         item = object()
-        self.run_script_setup()
+        self.run_script_setup_workspace()
         while item:
             self.run_script_setup_test()
             item = shared_queue.get()
             self.process(item)
             shared_queue.task_done()
             self.run_script_teardown_test()
-        self.run_script_teardown()
+        self.run_script_teardown_workspace()
 
-    def run_script_setup(self):
-        if run_script(self.setup, workspace=self.name):
+    def run_script_setup_workspace(self):
+        if run_script(self.scripts.setup_workspace, workspace=self.name):
             raise Abort('Setup workspace failed on worker %s and could not initialize the environment. Worker is dead')
 
-    def run_script_teardown(self):
-        if run_script(self.teardown, workspace=self.name):
+    def run_script_teardown_workspace(self):
+        if run_script(self.scripts.teardown_workspace, workspace=self.name):
             raise Abort('Teardown workspace failed on worker %s. Worker is dead')
 
     def run_script_setup_test(self):
-        if run_script(self.setup_test, workspace=self.name):
+        if run_script(self.scripts.setup_test, workspace=self.name):
                 raise Abort("setup_test failed on worker %s. Worker is dead", self.name)
 
     def run_script_teardown_test(self):
-        if run_script(self.teardown_test, workspace=self.name):
+        if run_script(self.scripts.teardown_test, workspace=self.name):
             raise Abort("teardown_test failed on worker %s. Worker is dead", self.name)
 
     def process(self, tid):
