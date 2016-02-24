@@ -1,4 +1,7 @@
+import os
 import sys
+import shutil
+import tempfile
 import argparse
 import queue
 import threading
@@ -24,7 +27,7 @@ def configure_logging(verbosity):
     logger.setLevel(level)
 
 
-def main():
+def main(tmpdir):
     parser = argparse.ArgumentParser(description='Run tests in parallel')
     parser.add_argument('action',
                         choices=('plugins', 'run'),
@@ -33,6 +36,12 @@ def main():
         '--source',
         default='.',
         help='Path to tests',
+    )
+    parser.add_argument(
+        '--path-workspaces',
+        dest='workspace_path',
+        default=tmpdir,
+        help='Path to search for plugins',
     )
     parser.add_argument(
         '--path-plugins',
@@ -95,7 +104,7 @@ def main():
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    paratest = Paratest(args.workspaces, scripts, args.source)
+    paratest = Paratest(args.workspaces, scripts, args.source, args.workspace_path)
     if args.action == 'plugins':
         return paratest.list_plugins()
     if args.action == 'run':
@@ -128,8 +137,9 @@ class Scripts(object):
 
 
 class Paratest(object):
-    def __init__(self, workspace_num, scripts, source_path):
+    def __init__(self, workspace_num, scripts, source_path, workspace_path):
         self.workspace_num = workspace_num
+        self.workspace_path = workspace_path
         self.scripts = scripts
         self.source_path = source_path
         self._workers = []
@@ -158,11 +168,11 @@ class Paratest(object):
         self.assert_all_messages_were_processed()
 
     def run_script_setup(self):
-        if run_script(self.scripts.setup):
+        if run_script(self.scripts.setup, path=self.workspace_path):
             raise Abort('The setup script failed. aborting.')
 
     def run_script_teardown(self):
-        if run_script(self.scripts.teardown):
+        if run_script(self.scripts.teardown, path=self.workspace_path):
             raise Abort('The teardown script failed, but nothing can be done.')
 
     def queue_tests(self, pluginobj):
@@ -177,6 +187,7 @@ class Paratest(object):
             t = Worker(
                 pluginobj,
                 scripts=self.scripts,
+                workspace_path=self.workspace_path,
                 name=str(i),
             )
             self._workers.append(t)
@@ -201,39 +212,54 @@ class Paratest(object):
 
 
 class Worker(threading.Thread):
-    def __init__(self, plugin, scripts, *args, **kwargs):
+    def __init__(self, plugin, scripts, workspace_path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.plugin = plugin
         self.scripts = scripts
+        self.workspace_path = os.path.join(workspace_path, self.name)
 
     def run(self):
         logger.debug("%s START" % self.name)
-        self.plugin.init_environment(1)
+        self.plugin.init_environment(self.name, self.workspace_path)
         item = object()
         self.run_script_setup_workspace()
         while item:
             self.run_script_setup_test()
+
             item = shared_queue.get()
             self.process(item)
             shared_queue.task_done()
+
             self.run_script_teardown_test()
         self.run_script_teardown_workspace()
 
     def run_script_setup_workspace(self):
-        if run_script(self.scripts.setup_workspace, workspace=self.name):
-            raise Abort('Setup workspace failed on worker %s and could not initialize the environment. Worker is dead')
+        self._run_script(
+            self.scripts.setup_workspace,
+            'Setup workspace failed on worker %s and could not initialize the environment. Worker is dead' % self.name
+        )
 
     def run_script_teardown_workspace(self):
-        if run_script(self.scripts.teardown_workspace, workspace=self.name):
-            raise Abort('Teardown workspace failed on worker %s. Worker is dead')
+        self._run_script(
+            self.scripts.teardown_workspace,
+            'Teardown workspace failed on worker %s. Worker is dead' % self.name
+        )
 
     def run_script_setup_test(self):
-        if run_script(self.scripts.setup_test, workspace=self.name):
-                raise Abort("setup_test failed on worker %s. Worker is dead", self.name)
+        self._run_script(
+            self.scripts.setup_test,
+            "setup_test failed on worker %s. Worker is dead" % self.name
+        )
 
     def run_script_teardown_test(self):
-        if run_script(self.scripts.teardown_test, workspace=self.name):
-            raise Abort("teardown_test failed on worker %s. Worker is dead", self.name)
+        self._run_script(
+            self.scripts.teardown_test,
+            "teardown_test failed on worker %s. Worker is dead" % self.name
+        )
+
+    def _run_script(self, script, message):
+        if run_script(script, workspace=self.name, path=self.workspace_path):
+            raise Abort(message)
 
     def process(self, tid):
         if tid is None:
@@ -245,8 +271,11 @@ class Worker(threading.Thread):
 
 
 if __name__ == '__main__':
+    tmpdir = tempfile.mkdtemp()
     try:
-        main()
+        main(tmpdir)
     except Abort as e:
         logger.critical(e)
         sys.exit(2)
+    finally:
+        shutil.rmtree(tmpdir)
