@@ -5,9 +5,9 @@ import tempfile
 import argparse
 import queue
 import threading
-import subprocess
 import logging
 from yapsy.PluginManager import PluginManager
+from subprocess import Popen, PIPE
 
 logger = logging.getLogger(__name__)
 shared_queue = queue.Queue()
@@ -41,7 +41,13 @@ def main(tmpdir):
         '--path-workspaces',
         dest='workspace_path',
         default=tmpdir,
-        help='Path to search for plugins',
+        help='Path where create workers workspaces',
+    )
+    parser.add_argument(
+        '--path-output',
+        dest='output_path',
+        default=tmpdir,
+        help='Path where store the output file from tests execution',
     )
     parser.add_argument(
         '--path-plugins',
@@ -54,10 +60,10 @@ def main(tmpdir):
         help='Plugin to be activated',
     )
     parser.add_argument(
-        '-w', '--workspaces',
+        '-w', '--workers',
         type=int,
         default=5,
-        help="Number of workspaces to be created (tests in parallel)",
+        help="Number of workers to be created (tests in parallel)",
     )
     parser.add_argument(
         '-v', '--verbosity',
@@ -104,7 +110,7 @@ def main(tmpdir):
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    paratest = Paratest(args.workspaces, scripts, args.source, args.workspace_path)
+    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path)
     if args.action == 'plugins':
         return paratest.list_plugins()
     if args.action == 'run':
@@ -117,12 +123,16 @@ def run_script(script, **kwargs):
         return
     for k, v in kwargs.items():
         script = script.replace('{%s}' % k, v)
-    logger.debug("About to run script %s", script)
-    result = subprocess.run(script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.stdout:
-        logger.debug(result.stdout)
-    if result.stderr:
-        logger.warning(result.stderr)
+
+    logger.debug("About to run script $%s", script)
+
+    result = Popen(script, shell=True, stdout=PIPE, stderr=PIPE)
+    output, err = result.communicate()
+
+    if output != b'':
+        logger.debug(output)
+    if err != b'':
+        logger.warning(err)
     return result.returncode
 
 
@@ -137,16 +147,22 @@ class Scripts(object):
 
 
 class Paratest(object):
-    def __init__(self, workspace_num, scripts, source_path, workspace_path):
+    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path):
         self.workspace_num = workspace_num
         self.workspace_path = workspace_path
         self.scripts = scripts
         self.source_path = source_path
+        self.output_path = output_path
         self._workers = []
         self.pluginmgr = PluginManager()
         self.pluginmgr.setPluginInfoExtension('paratest')
         self.pluginmgr.setPluginPlaces(["plugins", ""])
         self.pluginmgr.collectPlugins()
+
+        if not os.path.exists(self.source_path):
+            os.makedirs(self.source_path)
+        if not os.path.exists(self.output_path):
+            os.makedirs(self.output_path)
 
     def list_plugins(self):
         msg = "Available plugins are:\n"
@@ -188,6 +204,8 @@ class Paratest(object):
                 pluginobj,
                 scripts=self.scripts,
                 workspace_path=self.workspace_path,
+                source_path=self.source_path,
+                output_path=self.output_path,
                 name=str(i),
             )
             self._workers.append(t)
@@ -212,15 +230,18 @@ class Paratest(object):
 
 
 class Worker(threading.Thread):
-    def __init__(self, plugin, scripts, workspace_path, *args, **kwargs):
+    def __init__(self, plugin, scripts, workspace_path, source_path, output_path, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.plugin = plugin
         self.scripts = scripts
+        self.source_path = source_path
+        self.output_path = output_path
         self.workspace_path = os.path.join(workspace_path, self.name)
+        if not os.path.exists(self.workspace_path):
+            os.makedirs(self.workspace_path)
 
     def run(self):
         logger.debug("%s START" % self.name)
-        self.plugin.init_environment(self.name, self.workspace_path)
         item = object()
         self.run_script_setup_workspace()
         while item:
@@ -258,14 +279,14 @@ class Worker(threading.Thread):
         )
 
     def _run_script(self, script, message):
-        if run_script(script, workspace=self.name, path=self.workspace_path):
+        if run_script(script, id=self.name, workspace=self.workspace_path, source=self.source_path, output=self.output_path):
             raise Abort(message)
 
     def process(self, tid):
         if tid is None:
             return
         try:
-            self.plugin.run(tid)
+            self.plugin.run(id = self.name, tid = tid, workspace = self.workspace_path, output_path = self.output_path)
         except Exception as e:
             logger.exception(e)
 

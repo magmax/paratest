@@ -6,10 +6,5 @@ class Dummy(IPlugin):
     def find(self, path):
         return ['foo', 'bar', 'bazz']
 
-    def init_environment(self, id, tmpdir):
-        self.id = id
-        self.tmpdir = tmpdir
-        time.sleep(1)
-
-    def run(self, tid):
-        print("Running test %s" % tid)
+    def run(self, id, tid, workspace, output_path):
+        print("Worker %s: Running test %s" % (id, tid))
