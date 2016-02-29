@@ -9,7 +9,7 @@ import logging
 from yapsy.PluginManager import PluginManager
 from subprocess import Popen, PIPE
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('paratest')
 shared_queue = queue.Queue()
 
 
@@ -129,16 +129,16 @@ def run_script(script, **kwargs):
     for k, v in kwargs.items():
         script = script.replace('{%s}' % k, v)
 
-    logger.debug("About to run script $%s", script)
+    logger.info("About to run script $%s", script)
 
     result = Popen(script, shell=True, stdout=PIPE, stderr=PIPE)
     output, err = result.communicate()
 
-    output = output.decode("utf-8").replace('\\r\\n', '\n')
-    err = err.decode("utf-8").replace('\\r\\n', '\n')
+    output = output.decode("utf-8")
+    err = err.decode("utf-8")
 
     if output != '':
-        logger.debug(output)
+        logger.info(output)
     if err != '':
         logger.warning(err)
     return result.returncode
