@@ -331,7 +331,7 @@ class Persistence(object):
             with con:
                 logger.info("Creating persistence file")
                 con.execute("create table executions(id integer primary key, source varchar, timestamp date default (datetime('now','localtime')))")
-                con.execute("create table testtime(id integer primary key, source varchar, test varchar, duration float, execution int, FOREIGN KEY(execution) REFERENCES executions(id) on update cascade)")
+                con.execute("create table testtime(id integer primary key, source varchar, test varchar, duration float, execution int, FOREIGN KEY(execution) REFERENCES executions(id) on delete cascade)")
             self.create = False
         with con:
             c = con.execute("select id from executions where source=? order by id desc limit 5, 1", (self.source, ))
@@ -339,6 +339,7 @@ class Persistence(object):
             deprecated_executions = f[0] if f else None
             if deprecated_executions is not None:
                 con.execute("delete from executions where id <= ?", (deprecated_executions, ))
+                con.execute("delete from testtime where execution <= ?", (deprecated_executions, ))
             con.execute("insert into executions(source) values (?)", (self.source, ))
             c = con.execute("select max(id) from executions where source=?", (self.source, ))
             self.execution = c.fetchone()[0]
@@ -359,7 +360,7 @@ class Persistence(object):
         con.close()
 
     def show(self):
-        if not os.path.exists(db_path):
+        if not os.path.exists(self.db_path):
             print("No database found")
             return
         con = sqlite3.connect(self.db_path)
