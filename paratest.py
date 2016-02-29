@@ -9,7 +9,7 @@ import logging
 from yapsy.PluginManager import PluginManager
 from subprocess import Popen, PIPE
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('paratest')
 shared_queue = queue.Queue()
 
 
@@ -54,6 +54,12 @@ def main(tmpdir):
         dest='plugins',
         default='plugins',
         help='Path to search for plugins',
+    )
+    parser.add_argument(
+        '--test-pattern',
+        dest='test_pattern',
+        default='',
+        help='Pattern to find test files on workspace',
     )
     parser.add_argument(
         '--plugin',
@@ -110,13 +116,12 @@ def main(tmpdir):
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path)
+    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path, args.test_pattern)
     if args.action == 'plugins':
         return paratest.list_plugins()
     if args.action == 'run':
         return paratest.run(args.plugin)
     return paratest.process(args)
-
 
 def run_script(script, **kwargs):
     if not script:
@@ -124,17 +129,19 @@ def run_script(script, **kwargs):
     for k, v in kwargs.items():
         script = script.replace('{%s}' % k, v)
 
-    logger.debug("About to run script $%s", script)
+    logger.info("About to run script $%s", script)
 
     result = Popen(script, shell=True, stdout=PIPE, stderr=PIPE)
     output, err = result.communicate()
 
-    if output != b'':
-        logger.debug(output)
-    if err != b'':
+    output = output.decode("utf-8")
+    err = err.decode("utf-8")
+
+    if output != '':
+        logger.info(output)
+    if err != '':
         logger.warning(err)
     return result.returncode
-
 
 class Scripts(object):
     def __init__(self, setup, setup_workspace, setup_test, teardown_test, teardown_workspace, teardown):
@@ -147,12 +154,13 @@ class Scripts(object):
 
 
 class Paratest(object):
-    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path):
+    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path, test_pattern):
         self.workspace_num = workspace_num
         self.workspace_path = workspace_path
         self.scripts = scripts
         self.source_path = source_path
         self.output_path = output_path
+        self.test_pattern = test_pattern
         self._workers = []
         self.pluginmgr = PluginManager()
         self.pluginmgr.setPluginInfoExtension('paratest')
@@ -193,7 +201,7 @@ class Paratest(object):
 
     def queue_tests(self, pluginobj):
         tids = 0
-        for tid in pluginobj.find(self.source_path):
+        for tid in pluginobj.find(self.source_path, self.test_pattern):
             shared_queue.put(tid)
             tids += 1
         return tids
