@@ -117,7 +117,6 @@ def main(tmpdir):
         return paratest.run(args.plugin)
     return paratest.process(args)
 
-
 def run_script(script, **kwargs):
     if not script:
         return
@@ -129,12 +128,14 @@ def run_script(script, **kwargs):
     result = Popen(script, shell=True, stdout=PIPE, stderr=PIPE)
     output, err = result.communicate()
 
-    if output != b'':
+    output = output.decode("utf-8").replace('\\r\\n', '\n')
+    err = err.decode("utf-8").replace('\\r\\n', '\n')
+
+    if output != '':
         logger.debug(output)
-    if err != b'':
+    if err != '':
         logger.warning(err)
     return result.returncode
-
 
 class Scripts(object):
     def __init__(self, setup, setup_workspace, setup_test, teardown_test, teardown_workspace, teardown):
