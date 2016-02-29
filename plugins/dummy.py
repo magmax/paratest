@@ -3,7 +3,7 @@ from yapsy.IPlugin import IPlugin
 
 
 class Dummy(IPlugin):
-    def find(self, path):
+    def find(self, path, pattern):
         return ['foo', 'bar', 'bazz']
 
     def run(self, id, tid, workspace, output_path):
