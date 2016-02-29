@@ -56,6 +56,12 @@ def main(tmpdir):
         help='Path to search for plugins',
     )
     parser.add_argument(
+        '--test-pattern',
+        dest='test_pattern',
+        default='',
+        help='Pattern to find test files on workspace',
+    )
+    parser.add_argument(
         '--plugin',
         help='Plugin to be activated',
     )
@@ -110,7 +116,7 @@ def main(tmpdir):
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path)
+    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path, args.test_pattern)
     if args.action == 'plugins':
         return paratest.list_plugins()
     if args.action == 'run':
@@ -148,12 +154,13 @@ class Scripts(object):
 
 
 class Paratest(object):
-    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path):
+    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path, test_pattern):
         self.workspace_num = workspace_num
         self.workspace_path = workspace_path
         self.scripts = scripts
         self.source_path = source_path
         self.output_path = output_path
+        self.test_pattern = test_pattern
         self._workers = []
         self.pluginmgr = PluginManager()
         self.pluginmgr.setPluginInfoExtension('paratest')
@@ -194,7 +201,7 @@ class Paratest(object):
 
     def queue_tests(self, pluginobj):
         tids = 0
-        for tid in pluginobj.find(self.source_path):
+        for tid in pluginobj.find(self.source_path, self.test_pattern):
             shared_queue.put(tid)
             tids += 1
         return tids
