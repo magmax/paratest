@@ -6,12 +6,16 @@ import argparse
 import queue
 import threading
 import logging
+import time
 from yapsy.PluginManager import PluginManager
 from subprocess import Popen, PIPE
+import sqlite3
+
 
 logger = logging.getLogger('paratest')
-shared_queue = queue.Queue()
-
+shared_queue = queue.PriorityQueue()
+INFINITE = sys.maxsize
+FINISH = ''
 
 class Abort(Exception):
     pass
@@ -30,7 +34,7 @@ def configure_logging(verbosity):
 def main(tmpdir):
     parser = argparse.ArgumentParser(description='Run tests in parallel')
     parser.add_argument('action',
-                        choices=('plugins', 'run'),
+                        choices=('plugins', 'run', 'show'),
                         help='Action to perform')
     parser.add_argument(
         '--source',
@@ -54,6 +58,12 @@ def main(tmpdir):
         dest='plugins',
         default='plugins',
         help='Path to search for plugins',
+    )
+    parser.add_argument(
+        '--path-db',
+        dest='path_db',
+        default=os.path.join(os.path.expandvars('$HOME'), 'paratest.db'),
+        help="Path to paratest database.",
     )
     parser.add_argument(
         '--test-pattern',
@@ -116,12 +126,16 @@ def main(tmpdir):
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path, args.test_pattern)
+    persistence = Persistence(args.path_db, args.source)
+    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path, args.test_pattern, persistence)
     if args.action == 'plugins':
         return paratest.list_plugins()
     if args.action == 'run':
+        persistence.initialize()
         return paratest.run(args.plugin)
-    return paratest.process(args)
+    if args.action == 'show':
+        return persistence.show()
+        
 
 def run_script(script, **kwargs):
     if not script:
@@ -154,7 +168,7 @@ class Scripts(object):
 
 
 class Paratest(object):
-    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path, test_pattern):
+    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path, test_pattern, persistence):
         self.workspace_num = workspace_num
         self.workspace_path = workspace_path
         self.scripts = scripts
@@ -166,6 +180,7 @@ class Paratest(object):
         self.pluginmgr.setPluginInfoExtension('paratest')
         self.pluginmgr.setPluginPlaces(["plugins", ""])
         self.pluginmgr.collectPlugins()
+        self.persistence = persistence
 
         if not os.path.exists(self.source_path):
             os.makedirs(self.source_path)
@@ -202,7 +217,7 @@ class Paratest(object):
     def queue_tests(self, pluginobj):
         tids = 0
         for tid in pluginobj.find(self.source_path, self.test_pattern):
-            shared_queue.put(tid)
+            shared_queue.put((self.persistence.get_priority(tid), tid))
             tids += 1
         return tids
 
@@ -214,6 +229,7 @@ class Paratest(object):
                 workspace_path=self.workspace_path,
                 source_path=self.source_path,
                 output_path=self.output_path,
+                persistence=self.persistence,
                 name=str(i),
             )
             self._workers.append(t)
@@ -225,7 +241,7 @@ class Paratest(object):
         logger.debug("start workers")
         for t in self._workers:
             t.start()
-            shared_queue.put(None)
+            shared_queue.put((INFINITE, FINISH))
 
     def wait_workers(self):
         logger.debug("wait for all workers to finish")
@@ -238,12 +254,13 @@ class Paratest(object):
 
 
 class Worker(threading.Thread):
-    def __init__(self, plugin, scripts, workspace_path, source_path, output_path, *args, **kwargs):
+    def __init__(self, plugin, scripts, workspace_path, source_path, output_path, persistence, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.plugin = plugin
         self.scripts = scripts
         self.source_path = source_path
         self.output_path = output_path
+        self.persistence = persistence
         self.workspace_path = os.path.join(workspace_path, self.name)
         if not os.path.exists(self.workspace_path):
             os.makedirs(self.workspace_path)
@@ -255,7 +272,7 @@ class Worker(threading.Thread):
         while item:
             self.run_script_setup_test()
 
-            item = shared_queue.get()
+            _, item = shared_queue.get()
             self.process(item)
             shared_queue.task_done()
 
@@ -291,13 +308,68 @@ class Worker(threading.Thread):
             raise Abort(message)
 
     def process(self, tid):
-        if tid is None:
+        if tid is FINISH:
             return
         try:
+            start = time.time()
             self.plugin.run(id = self.name, tid = tid, workspace = self.workspace_path, output_path = self.output_path)
+            self.persistence.add(tid, time.time() - start)
         except Exception as e:
             logger.exception(e)
 
+
+class Persistence(object):
+    def __init__(self, db_path, source):
+        self.create = not os.path.exists(db_path)
+        self.source = source
+        self.db_path = db_path
+        self.execution = None
+
+    def initialize(self):
+        con = sqlite3.connect(self.db_path)
+        if self.create:
+            with con:
+                logger.info("Creating persistence file")
+                con.execute("create table executions(id integer primary key, source varchar, timestamp date default (datetime('now','localtime')))")
+                con.execute("create table testtime(id integer primary key, source varchar, test varchar, duration float, execution int, FOREIGN KEY(execution) REFERENCES executions(id) on update cascade)")
+            self.create = False
+        with con:
+            c = con.execute("select id from executions where source=? order by id desc limit 5, 1", (self.source, ))
+            f = c.fetchone()
+            deprecated_executions = f[0] if f else None
+            if deprecated_executions is not None:
+                con.execute("delete from executions where id <= ?", (deprecated_executions, ))
+            con.execute("insert into executions(source) values (?)", (self.source, ))
+            c = con.execute("select max(id) from executions where source=?", (self.source, ))
+            self.execution = c.fetchone()[0]
+        con.close()
+
+    def get_priority(self, test):
+        con = sqlite3.connect(self.db_path)
+        try:
+            cursor = con.execute('select avg(duration) from testtime where source=? and test=?', (self.source, test) )
+            return cursor.fetchone()[0] or 0
+        finally:
+            con.close()
+
+    def add(self, test, duration):
+        con = sqlite3.connect(self.db_path)
+        with con:
+            con.execute('insert into testtime(source, test, duration, execution) values(?, ?, ?, ?) ', (self.source, test, duration, self.execution) )
+        con.close()
+
+    def show(self):
+        if not os.path.exists(db_path):
+            print("No database found")
+            return
+        con = sqlite3.connect(self.db_path)
+        for item in con.execute('select distinct source from testtime'):
+            source = item[0]
+            print(source)
+            for test in con.execute('select test, avg(duration) from testtime where source=? group by test', (source,)):
+                print('    %s \t= %s' % test)
+        con.close()
+        
 
 if __name__ == '__main__':
     tmpdir = tempfile.mkdtemp()
