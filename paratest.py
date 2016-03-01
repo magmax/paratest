@@ -62,7 +62,7 @@ def main(tmpdir):
     parser.add_argument(
         '--path-db',
         dest='path_db',
-        default=os.path.join(os.path.expandvars('$HOME'), 'paratest.db'),
+        default=os.path.join(os.path.expanduser("~"), 'paratest.db'),
         help="Path to paratest database.",
     )
     parser.add_argument(
