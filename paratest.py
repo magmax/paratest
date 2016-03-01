@@ -367,8 +367,9 @@ class Persistence(object):
         for item in con.execute('select distinct source from testtime'):
             source = item[0]
             print(source)
-            for test in con.execute('select test, avg(duration) from testtime where source=? group by test', (source,)):
-                print('    %s \t= %s' % test)
+            for test in con.execute('select test, avg(duration) from testtime where source=? group by test order by avg(duration) desc', (source,)):
+                print('    %.2f: %s' % (test[1], test[0]))
+
         con.close()
         
 
