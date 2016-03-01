@@ -7,4 +7,6 @@ class Dummy(IPlugin):
         return ['foo', 'bar', 'bazz']
 
     def run(self, id, tid, workspace, output_path):
+        if tid == 'bazz':
+            raise Exception("Erroneous test")
         print("Worker %s: Running test %s" % (id, tid))

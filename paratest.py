@@ -135,7 +135,7 @@ def main(tmpdir):
         return paratest.run(args.plugin)
     if args.action == 'show':
         return persistence.show()
-        
+
 
 def run_script(script, **kwargs):
     if not script:
@@ -205,6 +205,8 @@ class Paratest(object):
         self.wait_workers()
         self.run_script_teardown()
         self.assert_all_messages_were_processed()
+        self.assert_all_workers_were_successful()
+        logger.info("Finished successfully")
 
     def run_script_setup(self):
         if run_script(self.scripts.setup, path=self.workspace_path):
@@ -248,6 +250,10 @@ class Paratest(object):
         for t in self._workers:
             t.join()
 
+    def assert_all_workers_were_successful(self):
+        if any(x.errors for x in self._workers):
+            raise Abort('One or more workers failed')
+
     def assert_all_messages_were_processed(self):
         if not shared_queue.empty():
             raise Abort('There were unprocessed tests, but all workers are dead. Aborting.')
@@ -264,16 +270,21 @@ class Worker(threading.Thread):
         self.workspace_path = os.path.join(workspace_path, self.name)
         if not os.path.exists(self.workspace_path):
             os.makedirs(self.workspace_path)
+        self.errors = None
 
     def run(self):
         logger.debug("%s START" % self.name)
         item = object()
         self.run_script_setup_workspace()
+        self.errors = False
         while item:
             self.run_script_setup_test()
 
             _, item = shared_queue.get()
-            self.process(item)
+            try:
+                self.process(item)
+            except:
+                self.errors = True
             shared_queue.task_done()
 
             self.run_script_teardown_test()
@@ -315,7 +326,8 @@ class Worker(threading.Thread):
             self.plugin.run(id = self.name, tid = tid, workspace = self.workspace_path, output_path = self.output_path)
             self.persistence.add(tid, time.time() - start)
         except Exception as e:
-            logger.exception(e)
+            logger.error("Suite %s failed due to: %s", tid, e)
+            raise
 
 
 class Persistence(object):
@@ -371,7 +383,7 @@ class Persistence(object):
                 print('    %.2f: %s' % (test[1], test[0]))
 
         con.close()
-        
+
 
 if __name__ == '__main__':
     tmpdir = tempfile.mkdtemp()
