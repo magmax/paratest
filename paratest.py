@@ -350,8 +350,8 @@ class Persistence(object):
             f = c.fetchone()
             deprecated_executions = f[0] if f else None
             if deprecated_executions is not None:
-                con.execute("delete from executions where id <= ?", (deprecated_executions, ))
-                con.execute("delete from testtime where execution <= ?", (deprecated_executions, ))
+                con.execute("delete from executions where id <= ? and source=?", (deprecated_executions, self.source))
+                con.execute("delete from testtime where execution <= ? and source=?", (deprecated_executions, self.source))
             con.execute("insert into executions(source) values (?)", (self.source, ))
             c = con.execute("select max(id) from executions where source=?", (self.source, ))
             self.execution = c.fetchone()[0]
