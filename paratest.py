@@ -195,18 +195,21 @@ class Paratest(object):
 
 
     def run(self, plugin):
-        plugin = self.pluginmgr.getPluginByName(plugin)
-        pluginobj = plugin.plugin_object
+        try:
+            plugin = self.pluginmgr.getPluginByName(plugin)
+            pluginobj = plugin.plugin_object
 
-        self.run_script_setup()
-        test_number = self.queue_tests(pluginobj)
-        self.create_workers(pluginobj, self.num_of_workers(test_number))
-        self.start_workers()
-        self.wait_workers()
-        self.run_script_teardown()
-        self.assert_all_messages_were_processed()
-        self.assert_all_workers_were_successful()
-        logger.info("Finished successfully")
+            self.run_script_setup()
+            test_number = self.queue_tests(pluginobj)
+            self.create_workers(pluginobj, self.num_of_workers(test_number))
+            self.start_workers()
+            self.wait_workers()
+            self.run_script_teardown()
+            self.assert_all_messages_were_processed()
+            self.assert_all_workers_were_successful()
+            logger.info("Finished successfully")
+        finally:
+            self.print_report()
 
     def run_script_setup(self):
         if run_script(self.scripts.setup, path=self.workspace_path):
@@ -245,6 +248,18 @@ class Paratest(object):
             t.start()
             shared_queue.put((INFINITE, FINISH))
 
+    def print_report(self):
+        msg = 'Global Report:\n'
+        for t in self._workers:
+            msg += 'Worker %s\n' % t.name
+            for result in t.report:
+                msg += '   %.4fs %s ... %s\n' %(
+                    result.duration,
+                    result.name,
+                    'OK' if result.success else 'FAIL',
+                )
+        logger.info(msg)
+
     def wait_workers(self):
         logger.debug("wait for all workers to finish")
         for t in self._workers:
@@ -259,6 +274,13 @@ class Paratest(object):
             raise Abort('There were unprocessed tests, but all workers are dead. Aborting.')
 
 
+class Report(object):
+    def __init__(self, name, duration, success):
+        self.name = name
+        self.duration = duration
+        self.success = success
+
+
 class Worker(threading.Thread):
     def __init__(self, plugin, scripts, workspace_path, source_path, output_path, persistence, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -271,6 +293,7 @@ class Worker(threading.Thread):
         if not os.path.exists(self.workspace_path):
             os.makedirs(self.workspace_path)
         self.errors = None
+        self.report = []
 
     def run(self):
         logger.debug("%s START" % self.name)
@@ -289,6 +312,7 @@ class Worker(threading.Thread):
 
             self.run_script_teardown_test()
         self.run_script_teardown_workspace()
+        logger.info("Worker %s has finished.", self.name)
 
     def run_script_setup_workspace(self):
         self._run_script(
@@ -321,15 +345,22 @@ class Worker(threading.Thread):
     def process(self, tid):
         if tid is FINISH:
             return
+        logger.info("Running test %s. %s tests left", tid, shared_queue.qsize())
         try:
             start = time.time()
             self.plugin.run(id = self.name, tid = tid, workspace = self.workspace_path, output_path = self.output_path)
-            self.persistence.add(tid, time.time() - start)
+            duration = time.time() - start
+            self.persistence.add(tid, duration)
+            report = Report(name=tid, duration=duration, success=True)
         except Exception as e:
+            duration = time.time() - start
             logger.error("Suite %s failed due to: %s", tid, e)
+            report = Report(name=tid, duration=duration, success=False)
             raise
+        finally:
+            self.report.append(report)
 
-
+            
 class Persistence(object):
     def __init__(self, db_path, source):
         self.create = not os.path.exists(db_path)
@@ -361,7 +392,7 @@ class Persistence(object):
         con = sqlite3.connect(self.db_path)
         try:
             cursor = con.execute('select avg(duration) from testtime where source=? and test=?', (self.source, test) )
-            return cursor.fetchone()[0] or 0
+            return -1 * int(cursor.fetchone()[0] or 0)
         finally:
             con.close()
 

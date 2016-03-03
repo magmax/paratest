@@ -43,4 +43,6 @@ class Nunit(IPlugin):
             logger.info(output)
         if err != '':
             logger.warning(err)
-        return result.returncode
+        if result.returncode != 0:
+            raise Exception("nunit returned %s instead of 0", result.errorcode)
+        
