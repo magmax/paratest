@@ -42,6 +42,11 @@ def main(tmpdir):
         help='Path to tests',
     )
     parser.add_argument(
+        '--project-name',
+        dest='project_name',
+        default=None,
+        help='The project name. Allow to share results between different sources. The source by default.')
+    parser.add_argument(
         '--path-workspaces',
         dest='workspace_path',
         default=tmpdir,
@@ -126,7 +131,7 @@ def main(tmpdir):
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    persistence = Persistence(args.path_db, args.source)
+    persistence = Persistence(args.path_db, args.project_name or args.source)
     paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path, args.test_pattern, persistence)
     if args.action == 'plugins':
         return paratest.list_plugins()
@@ -362,9 +367,9 @@ class Worker(threading.Thread):
 
             
 class Persistence(object):
-    def __init__(self, db_path, source):
+    def __init__(self, db_path, projectname):
         self.create = not os.path.exists(db_path)
-        self.source = source
+        self.projectname = projectname
         self.db_path = db_path
         self.execution = None
 
@@ -377,21 +382,21 @@ class Persistence(object):
                 con.execute("create table testtime(id integer primary key, source varchar, test varchar, duration float, execution int, FOREIGN KEY(execution) REFERENCES executions(id) on delete cascade)")
             self.create = False
         with con:
-            c = con.execute("select id from executions where source=? order by id desc limit 5, 1", (self.source, ))
+            c = con.execute("select id from executions where source=? order by id desc limit 5, 1", (self.projectname, ))
             f = c.fetchone()
             deprecated_executions = f[0] if f else None
             if deprecated_executions is not None:
-                con.execute("delete from executions where id <= ? and source=?", (deprecated_executions, self.source))
-                con.execute("delete from testtime where execution <= ? and source=?", (deprecated_executions, self.source))
-            con.execute("insert into executions(source) values (?)", (self.source, ))
-            c = con.execute("select max(id) from executions where source=?", (self.source, ))
+                con.execute("delete from executions where id <= ? and source=?", (deprecated_executions, self.projectname))
+                con.execute("delete from testtime where execution <= ? and source=?", (deprecated_executions, self.projectname))
+            con.execute("insert into executions(source) values (?)", (self.projectname, ))
+            c = con.execute("select max(id) from executions where source=?", (self.projectname, ))
             self.execution = c.fetchone()[0]
         con.close()
 
     def get_priority(self, test):
         con = sqlite3.connect(self.db_path)
         try:
-            cursor = con.execute('select avg(duration) from testtime where source=? and test=?', (self.source, test) )
+            cursor = con.execute('select avg(duration) from testtime where source=? and test=?', (self.projectname, test) )
             return -1 * int(cursor.fetchone()[0] or 0)
         finally:
             con.close()
@@ -399,7 +404,7 @@ class Persistence(object):
     def add(self, test, duration):
         con = sqlite3.connect(self.db_path)
         with con:
-            con.execute('insert into testtime(source, test, duration, execution) values(?, ?, ?, ?) ', (self.source, test, duration, self.execution) )
+            con.execute('insert into testtime(source, test, duration, execution) values(?, ?, ?, ?) ', (self.projectname, test, duration, self.execution) )
         con.close()
 
     def show(self):
@@ -408,9 +413,8 @@ class Persistence(object):
             return
         con = sqlite3.connect(self.db_path)
         for item in con.execute('select distinct source from testtime'):
-            source = item[0]
-            print(source)
-            for test in con.execute('select test, avg(duration) from testtime where source=? group by test order by avg(duration) desc', (source,)):
+            projectname = item[0]
+            for test in con.execute('select test, avg(duration) from testtime where source=? group by test order by avg(duration) desc', (projectname,)):
                 print('    %.2f: %s' % (test[1], test[0]))
 
         con.close()
