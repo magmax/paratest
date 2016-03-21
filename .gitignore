@@ -2,6 +2,7 @@ venv/
 static/
 assets/vendor/
 **/.cache/
+*.egg-info/
 
 .coverage
 *~
