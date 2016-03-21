@@ -16,6 +16,7 @@ logger = logging.getLogger('paratest')
 shared_queue = queue.PriorityQueue()
 INFINITE = sys.maxsize
 FINISH = ''
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 class Abort(Exception):
     pass
@@ -183,7 +184,7 @@ class Paratest(object):
         self._workers = []
         self.pluginmgr = PluginManager()
         self.pluginmgr.setPluginInfoExtension('paratest')
-        self.pluginmgr.setPluginPlaces(["plugins", ""])
+        self.pluginmgr.setPluginPlaces([os.path.join(THIS_DIR, "plugins"), ""])
         self.pluginmgr.collectPlugins()
         self.persistence = persistence
 
@@ -365,7 +366,7 @@ class Worker(threading.Thread):
         finally:
             self.report.append(report)
 
-            
+
 class Persistence(object):
     def __init__(self, db_path, projectname):
         self.create = not os.path.exists(db_path)

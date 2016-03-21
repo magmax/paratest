@@ -1,0 +1,27 @@
+language: python
+
+sudo: false
+
+python:
+  - "3.2"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+  - "pypy"
+
+install:
+  - python setup.py install
+  - pip install pytest pytest-cov flake8 coveralls
+  - python setup.py develop
+
+script:
+  - flake8 paratest
+  - py.test paratest
+
+after_success:
+  - coveralls
+
+notifications:
+  email:
+    on_success: change
+    on_failure: change

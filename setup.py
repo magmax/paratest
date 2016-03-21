@@ -61,6 +61,10 @@ setup(name='paratest',
       include_package_data=True,
       zip_safe=False,
       install_requires=[
-          'yapsy',
+          'yapsy == 1.11.223',
       ],
-      )
+      tests_require=[
+          'pytest',
+          'pytest-cov',
+      ],
+)
