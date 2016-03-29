@@ -6,13 +6,16 @@ It allows to parallelize the integration/acceptance tests execution in different
 
 ParaTest can be run under any Continuous Integration Server, like Jenkins, TeamCity, Go-CD, Bamboo, etc.
 
-# Current plugins
+Current plugins
+===============
 
 ParaTest is in an early development stage and it still have no plugins to work. It is just a proof of concept.
 
-# Contribute
+Contribute
+==========
 
-## Plugins
+Plugins
+-------
 
 Plugins should implement the next interface:
 
