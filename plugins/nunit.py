@@ -8,41 +8,15 @@ from subprocess import Popen, PIPE
 logger = logging.getLogger('paratest')
 
 class Nunit(IPlugin):
-    def find(self, path, pattern):
-        p = re.compile(pattern)
-
-        tests = []
+    def find(self, path, test_pattern, file_pattern, output_path):
+        c_file_pattern = re.compile(file_pattern)
 
         for root, _, files in os.walk(path):
             for file in files:
-                f = os.path.join(root, file).replace(path, '')
-                if (p.match(f)):
-                    tests.append(f)
+                relative = os.path.join(root, file).replace(path, '')
+                if (c_file_pattern.match(f)):
+                    output_file = os.path.join(output_path, 'output_{ID}_{TID_NAME}.xml')
+                    tid_file = '%s\%s' % (workspace, file)
+                    cmdline = 'nunit3-console %s --process:Single --result:%s;format=nunit2' % (relative, output_file)
+                    yield cmdline
 
-        return tests
-
-    def run(self, id, tid, workspace, output_path):
-        pass
-        output_file = os.path.join(output_path, 'output_%s_%s' % (id, tid.replace('\\', '.')))
-        tid_file = '%s\%s' % (workspace, tid)
-        
-        logger.debug("Worker %s: workspace %s" % (id,workspace))
-        logger.debug("Worker %s: Running test %s" % (id, tid_file))
-
-        cmdline = 'nunit3-console %s --process:Single --result:%s.xml;format=nunit2' % (tid_file, output_file)
-        
-        logger.debug(cmdline)
-        
-        result = Popen(cmdline, shell=True, stdout=PIPE, stderr=PIPE)
-        output, err = result.communicate()
-
-        output = output.decode("utf-8")
-        err = err.decode("utf-8")
-
-        if output != '':
-            logger.info(output)
-        if err != '':
-            logger.warning(err)
-        if result.returncode != 0:
-            raise Exception("nunit returned %s instead of 0", result.errorcode)
-        
