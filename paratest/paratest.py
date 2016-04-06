@@ -457,6 +457,10 @@ class Worker(threading.Thread):
         )
         try:
             start = time.time()
+            test_cmd = (test_cmd
+                .replace('{ID}', self.name)
+                .replace('{TID_NAME}', test_name)
+            )
             self.execute(test_cmd, test_name)
             duration = time.time() - start
             self.persistence.add(test_name, duration)
