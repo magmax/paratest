@@ -457,11 +457,9 @@ class Worker(threading.Thread):
         )
         try:
             start = time.time()
-            test_cmd = (test_cmd
-                .replace('{ID}', self.name)
-                .replace('{TID_NAME}', test_name)
-            )
-            self.execute(test_cmd, test_name)
+            cmd = test_cmd.format(ID=self.name, TID_NAME=test_name)
+            result = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE, cwd=self.workspace_path)
+            stdout, stderr = result.communicate()
             duration = time.time() - start
             self.persistence.add(test_name, duration)
             report = Report(name=test_name, duration=duration, success=True)
