@@ -33,7 +33,7 @@ def configure_logging(verbosity):
     logger.setLevel(level)
 
 
-def main(tmpdir):
+def main():
     parser = argparse.ArgumentParser(description='Run tests in parallel')
     parser.add_argument('action',
                         choices=('plugins', 'run', 'show'),
@@ -51,13 +51,13 @@ def main(tmpdir):
     parser.add_argument(
         '--path-workspaces',
         dest='workspace_path',
-        default=tmpdir,
+        default=None,
         help='Path where create workers workspaces',
     )
     parser.add_argument(
         '--path-output',
         dest='output_path',
-        default=tmpdir,
+        default='output',
         help='Path where store the output file from tests execution',
     )
     parser.add_argument(
@@ -133,15 +133,28 @@ def main(tmpdir):
         teardown_workspace=args.teardown_workspace,
         teardown=args.teardown,
     )
-    persistence = Persistence(args.path_db, args.project_name or args.source)
-    paratest = Paratest(args.workers, scripts, args.source, args.workspace_path, args.output_path, args.test_pattern, persistence)
-    if args.action == 'plugins':
-        return paratest.list_plugins()
-    if args.action == 'run':
-        persistence.initialize()
-        return paratest.run(args.plugin)
-    if args.action == 'show':
-        return persistence.show()
+
+    workspace_path = (
+        args.tempfile.mkdtemp()
+        if args.workspace_path is None
+        else None
+    )
+    try:
+        persistence = Persistence(args.path_db, args.project_name or args.source)
+        paratest = Paratest(args.workers, scripts, args.source, workspace_path, args.output_path, args.test_pattern, persistence)
+        if args.action == 'plugins':
+            return paratest.list_plugins()
+        if args.action == 'run':
+            persistence.initialize()
+            return paratest.run(args.plugin)
+        if args.action == 'show':
+            return persistence.show()
+    except Abort as e:
+        logger.critical(e)
+        sys.exit(2)
+    finally:
+        if args.workspace_path is None:
+            shutil.rmtree(workspace_path)
 
 
 def run_script(script, **kwargs):
@@ -439,11 +452,4 @@ class Persistence(object):
 
 
 if __name__ == '__main__':
-    tmpdir = tempfile.mkdtemp()
-    try:
-        main(tmpdir)
-    except Abort as e:
-        logger.critical(e)
-        sys.exit(2)
-    finally:
-        shutil.rmtree(tmpdir)
+    main()
