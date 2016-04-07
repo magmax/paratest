@@ -1,6 +1,6 @@
 [Core]
 Name = Nunit
-Module = Nunit
+Module = nunit
 
 [Documentation]
 Author = Daniel Aguado Araujo

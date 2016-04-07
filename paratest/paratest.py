@@ -135,7 +135,7 @@ def main():
     )
 
     workspace_path = (
-        args.tempfile.mkdtemp()
+        tempfile.mkdtemp()
         if args.workspace_path is None
         else None
     )
@@ -196,9 +196,13 @@ class Paratest(object):
         self.output_path = output_path
         self.test_pattern = test_pattern
         self._workers = []
+        plugin_places = [
+            os.path.join(THIS_DIR, "plugins"),
+        ]
+        logger.debug("Loading plugins from: %s", plugin_places)
         self.pluginmgr = PluginManager()
         self.pluginmgr.setPluginInfoExtension('paratest')
-        self.pluginmgr.setPluginPlaces([os.path.join(THIS_DIR, "plugins"), ""])
+        self.pluginmgr.setPluginPlaces(plugin_places)
         self.pluginmgr.collectPlugins()
         self.persistence = persistence
 
