@@ -58,12 +58,12 @@ setup(
     author_email='miguelangel.garcia@gmail.com',
     url='https://github.com/magmax/paratest',
     license='MIT',
-    packages=find_packages(exclude=['tests']),
+    packages=['paratest'],
     include_package_data=True,
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'paratest = paratest:main',
+            'paratest = paratest.paratest:main',
         ],
     },
     install_requires=[
