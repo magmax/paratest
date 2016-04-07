@@ -15,8 +15,9 @@ import sqlite3
 logger = logging.getLogger('paratest')
 shared_queue = queue.PriorityQueue()
 INFINITE = sys.maxsize
-FINISH = ''
+FINISH = object()
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+
 
 class Abort(Exception):
     pass
@@ -227,8 +228,9 @@ class Paratest(object):
 
     def queue_tests(self, pluginobj):
         tids = 0
-        for tid in pluginobj.find(self.source_path, self.test_pattern):
-            shared_queue.put((self.persistence.get_priority(tid), tid))
+        for test_name, test_cmd in pluginobj.find(self.source_path, test_pattern=None, file_pattern=self.test_pattern, output_path=self.output_path):
+            tid = (test_name, test_cmd)
+            shared_queue.put((self.persistence.get_priority(test_name), tid))
             tids += 1
         return tids
 
@@ -256,14 +258,20 @@ class Paratest(object):
 
     def print_report(self):
         msg = 'Global Report:\n'
+        durations = {}
         for t in self._workers:
             msg += 'Worker %s\n' % t.name
+            durations[t] = 0
             for result in t.report:
                 msg += '   %.4fs %s ... %s\n' %(
                     result.duration,
                     result.name,
                     'OK' if result.success else 'FAIL',
                 )
+                durations[t] += result.duration
+        bucklet = max(durations.values())
+        total = bucklet * len(durations)
+        msg += "\nIdle time: %.4fs\n" % (total - sum(durations.values()))
         logger.info(msg)
 
     def wait_workers(self):
@@ -302,16 +310,18 @@ class Worker(threading.Thread):
         self.report = []
 
     def run(self):
+        print("%s START" % self.name)
         logger.debug("%s START" % self.name)
-        item = object()
+        tid = object()
         self.run_script_setup_workspace()
         self.errors = False
-        while item:
+        while tid is not FINISH:
             self.run_script_setup_test()
 
-            _, item = shared_queue.get()
+            _, tid = shared_queue.get()
             try:
-                self.process(item)
+                if tid is not FINISH:
+                    self.process(tid)
             except:
                 self.errors = True
             shared_queue.task_done()
@@ -319,6 +329,7 @@ class Worker(threading.Thread):
             self.run_script_teardown_test()
         self.run_script_teardown_workspace()
         logger.info("Worker %s has finished.", self.name)
+        print("Worker %s has finished.", self.name)
 
     def run_script_setup_workspace(self):
         self._run_script(
@@ -349,19 +360,25 @@ class Worker(threading.Thread):
             raise Abort(message)
 
     def process(self, tid):
-        if tid is FINISH:
-            return
-        logger.info("Running test %s. %s tests left", tid, shared_queue.qsize())
+        test_name, test_cmd = tid
+        logger.info("Runner {runner} running test {test} on {workspace}. {left} tests left"
+                    .format(runner=self.name, test=test_name, workspace=self.workspace_path, left=shared_queue.qsize()))
         try:
             start = time.time()
-            self.plugin.run(id = self.name, tid = tid, workspace = self.workspace_path, output_path = self.output_path)
+            result = Popen(test_cmd, shell=True, stdout=PIPE, stderr=PIPE, cwd=self.workspace_path)
+            stdout, stderr = result.communicate()
             duration = time.time() - start
-            self.persistence.add(tid, duration)
-            report = Report(name=tid, duration=duration, success=True)
+            if stdout: logger.info(stdout.decode("utf-8"))
+            if stderr: logger.warning(stderr.decode("utf-8"))
+            if result.returncode != 0:
+                raise Exception("Test %s failed with code %s", test_name, result.errorcode)
+
+            self.persistence.add(test_name, duration)
+            report = Report(name=test_name, duration=duration, success=True)
         except Exception as e:
             duration = time.time() - start
             logger.error("Suite %s failed due to: %s", tid, e)
-            report = Report(name=tid, duration=duration, success=False)
+            report = Report(name=test_name, duration=duration, success=False)
             raise
         finally:
             self.report.append(report)
