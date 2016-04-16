@@ -14,7 +14,8 @@ install:
 
 script:
   - flake8 paratest --stat --count
-  - py.test paratest
+  - py.test tests/acceptance -p no:cov
+  - py.test tests/unit tests/integration
 
 after_success:
   - coveralls

@@ -76,6 +76,7 @@ setup(
         'yapsy == 1.11.223',
     ],
     tests_require=[
+        'pexpect',
         'pytest',
         'pytest-cov',
     ],
