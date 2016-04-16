@@ -4,6 +4,7 @@ assets/vendor/
 **/.cache/
 *.egg-info/
 dist/
+build/
 
 .coverage
 *~
