@@ -24,9 +24,10 @@ class Abort(Exception):
 
 
 def configure_logging(verbosity):
+    msg_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     VERBOSITIES = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG]
-    level = VERBOSITIES[min(int(verbosity), len(VERBOSITIES) -1)]
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    level = VERBOSITIES[min(int(verbosity), len(VERBOSITIES) - 1)]
+    formatter = logging.Formatter(msg_format)
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -47,7 +48,8 @@ def main():
         '--project-name',
         dest='project_name',
         default=None,
-        help='The project name. Allow to share results between different sources. The source by default.')
+        help='The project name. Allow to share results between different'
+        ' sources. The source by default.')
     parser.add_argument(
         '--path-workspaces',
         dest='workspace_path',
@@ -96,7 +98,8 @@ def main():
     )
     parser.add_argument(
         '--setup',
-        help='Script to prepare everything; it will be run once at the beginning'
+        help='Script to prepare everything;'
+        ' it will be run once at the beginning'
     )
     parser.add_argument(
         '--setup-workspace',
@@ -116,7 +119,8 @@ def main():
     parser.add_argument(
         '--teardown-workspace',
         dest='teardown_workspace',
-        help='Script to finalize a workspace; it will be run once by worker when no more tests are available'
+        help='Script to finalize a workspace; '
+        'it will be run once by worker when no more tests are available'
     )
     parser.add_argument(
         '--teardown',
@@ -140,8 +144,19 @@ def main():
         else None
     )
     try:
-        persistence = Persistence(args.path_db, args.project_name or args.source)
-        paratest = Paratest(args.workers, scripts, args.source, workspace_path, args.output_path, args.test_pattern, persistence)
+        persistence = Persistence(
+            args.path_db,
+            args.project_name or args.source,
+        )
+        paratest = Paratest(
+            args.workers,
+            scripts,
+            args.source,
+            workspace_path,
+            args.output_path,
+            args.test_pattern,
+            persistence,
+        )
         if args.action == 'plugins':
             return paratest.list_plugins()
         if args.action == 'run':
@@ -177,8 +192,17 @@ def run_script(script, **kwargs):
         logger.warning(err)
     return result.returncode
 
+
 class Scripts(object):
-    def __init__(self, setup, setup_workspace, setup_test, teardown_test, teardown_workspace, teardown):
+    def __init__(
+            self,
+            setup,
+            setup_workspace,
+            setup_test,
+            teardown_test,
+            teardown_workspace,
+            teardown,
+    ):
         self.setup = setup
         self.setup_workspace = setup_workspace
         self.setup_test = setup_test
@@ -188,7 +212,16 @@ class Scripts(object):
 
 
 class Paratest(object):
-    def __init__(self, workspace_num, scripts, source_path, workspace_path, output_path, test_pattern, persistence):
+    def __init__(
+            self,
+            workspace_num,
+            scripts,
+            source_path,
+            workspace_path,
+            output_path,
+            test_pattern,
+            persistence,
+    ):
         self.workspace_num = workspace_num
         self.workspace_path = workspace_path
         self.scripts = scripts
@@ -217,7 +250,6 @@ class Paratest(object):
             msg += "  %s" % plugin.name
         print(msg)
 
-
     def run(self, plugin):
         try:
             plugin = self.pluginmgr.getPluginByName(plugin)
@@ -245,7 +277,13 @@ class Paratest(object):
 
     def queue_tests(self, pluginobj):
         tids = 0
-        for test_name, test_cmd in pluginobj.find(self.source_path, test_pattern=None, file_pattern=self.test_pattern, output_path=self.output_path):
+        pluginobjs = pluginobj.find(
+            self.source_path,
+            test_pattern=None,
+            file_pattern=self.test_pattern,
+            output_path=self.output_path,
+        )
+        for test_name, test_cmd in pluginobjs:
             tid = (test_name, test_cmd)
             shared_queue.put((self.persistence.get_priority(test_name), tid))
             tids += 1
@@ -280,7 +318,7 @@ class Paratest(object):
             msg += 'Worker %s\n' % t.name
             durations[t] = 0
             for result in t.report:
-                msg += '   %.4fs %s ... %s\n' %(
+                msg += '   %.4fs %s ... %s\n' % (
                     result.duration,
                     result.name,
                     'OK' if result.success else 'FAIL',
@@ -302,7 +340,10 @@ class Paratest(object):
 
     def assert_all_messages_were_processed(self):
         if not shared_queue.empty():
-            raise Abort('There were unprocessed tests, but all workers are dead. Aborting.')
+            raise Abort(
+                'There were unprocessed tests, '
+                'but all workers are dead. Aborting.'
+            )
 
 
 class Report(object):
@@ -313,7 +354,17 @@ class Report(object):
 
 
 class Worker(threading.Thread):
-    def __init__(self, plugin, scripts, workspace_path, source_path, output_path, persistence, *args, **kwargs):
+    def __init__(
+            self,
+            plugin,
+            scripts,
+            workspace_path,
+            source_path,
+            output_path,
+            persistence,
+            *args,
+            **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.plugin = plugin
         self.scripts = scripts
@@ -351,13 +402,16 @@ class Worker(threading.Thread):
     def run_script_setup_workspace(self):
         self._run_script(
             self.scripts.setup_workspace,
-            'Setup workspace failed on worker %s and could not initialize the environment. Worker is dead' % self.name
+            'Setup workspace failed on worker %s '
+            'and could not initialize the environment. Worker is dead'
+            % self.name
         )
 
     def run_script_teardown_workspace(self):
         self._run_script(
             self.scripts.teardown_workspace,
-            'Teardown workspace failed on worker %s. Worker is dead' % self.name
+            'Teardown workspace failed on worker %s. Worker is dead'
+            % self.name
         )
 
     def run_script_setup_test(self):
@@ -373,22 +427,48 @@ class Worker(threading.Thread):
         )
 
     def _run_script(self, script, message):
-        if run_script(script, id=self.name, workspace=self.workspace_path, source=self.source_path, output=self.output_path):
+        if run_script(
+                script,
+                id=self.name,
+                workspace=self.workspace_path,
+                source=self.source_path,
+                output=self.output_path,
+        ):
             raise Abort(message)
 
     def process(self, tid):
         test_name, test_cmd = tid
-        logger.info("Runner {runner} running test {test} on {workspace}. {left} tests left"
-                    .format(runner=self.name, test=test_name, workspace=self.workspace_path, left=shared_queue.qsize()))
+        logger.info(
+            'Runner {runner} running test {test} on {workspace}.'
+            ' {left} tests left'
+            .format(
+                runner=self.name,
+                test=test_name,
+                workspace=self.workspace_path,
+                left=shared_queue.qsize(),
+            )
+        )
         try:
             start = time.time()
-            result = Popen(test_cmd, shell=True, stdout=PIPE, stderr=PIPE, cwd=self.workspace_path)
+            result = Popen(
+                test_cmd,
+                shell=True,
+                stdout=PIPE,
+                stderr=PIPE,
+                cwd=self.workspace_path,
+            )
             stdout, stderr = result.communicate()
             duration = time.time() - start
-            if stdout: logger.info(stdout.decode("utf-8"))
-            if stderr: logger.warning(stderr.decode("utf-8"))
+            if stdout:
+                logger.info(stdout.decode("utf-8"))
+            if stderr:
+                logger.warning(stderr.decode("utf-8"))
             if result.returncode != 0:
-                raise Exception("Test %s failed with code %s", test_name, result.errorcode)
+                raise Exception(
+                    "Test %s failed with code %s",
+                    test_name,
+                    result.errorcode,
+                )
 
             self.persistence.add(test_name, duration)
             report = Report(name=test_name, duration=duration, success=True)
@@ -413,25 +493,52 @@ class Persistence(object):
         if self.create:
             with con:
                 logger.info("Creating persistence file")
-                con.execute("create table executions(id integer primary key, source varchar, timestamp date default (datetime('now','localtime')))")
-                con.execute("create table testtime(id integer primary key, source varchar, test varchar, duration float, execution int, FOREIGN KEY(execution) REFERENCES executions(id) on delete cascade)")
+                con.execute(
+                    "create table executions"
+                    "(id integer primary key, source varchar, "
+                    "timestamp date default (datetime('now','localtime')))"
+                )
+                con.execute(
+                    "create table testtime"
+                    "(id integer primary key, source varchar, test varchar, "
+                    "duration float, execution int, "
+                    "FOREIGN KEY(execution) "
+                    "REFERENCES executions(id) on delete cascade)"
+                )
             self.create = False
         with con:
-            c = con.execute("select id from executions where source=? order by id desc limit 5, 1", (self.projectname, ))
+            c = con.execute(
+                "select id from executions where source=? "
+                "order by id desc limit 5, 1",
+                (self.projectname, )
+            )
             f = c.fetchone()
             deprecated_executions = f[0] if f else None
             if deprecated_executions is not None:
-                con.execute("delete from executions where id <= ? and source=?", (deprecated_executions, self.projectname))
-                con.execute("delete from testtime where execution <= ? and source=?", (deprecated_executions, self.projectname))
-            con.execute("insert into executions(source) values (?)", (self.projectname, ))
-            c = con.execute("select max(id) from executions where source=?", (self.projectname, ))
+                con.execute(
+                    "delete from executions "
+                    "where id <= ? and source=?",
+                    (deprecated_executions, self.projectname)
+                )
+                con.execute(
+                    "delete from testtime "
+                    "where execution <= ? and source=?",
+                    (deprecated_executions, self.projectname)
+                )
+            con.execute("insert into executions(source) values (?)",
+                        (self.projectname, ))
+            c = con.execute("select max(id) from executions where source=?",
+                            (self.projectname, ))
             self.execution = c.fetchone()[0]
         con.close()
 
     def get_priority(self, test):
         con = sqlite3.connect(self.db_path)
         try:
-            cursor = con.execute('select avg(duration) from testtime where source=? and test=?', (self.projectname, test) )
+            cursor = con.execute(
+                'select avg(duration) from testtime where source=? and test=?',
+                (self.projectname, test)
+            )
             return -1 * int(cursor.fetchone()[0] or 0)
         finally:
             con.close()
@@ -439,7 +546,11 @@ class Persistence(object):
     def add(self, test, duration):
         con = sqlite3.connect(self.db_path)
         with con:
-            con.execute('insert into testtime(source, test, duration, execution) values(?, ?, ?, ?) ', (self.projectname, test, duration, self.execution) )
+            con.execute(
+                'insert into testtime'
+                '(source, test, duration, execution) values(?, ?, ?, ?)',
+                (self.projectname, test, duration, self.execution)
+            )
         con.close()
 
     def show(self):
@@ -449,7 +560,11 @@ class Persistence(object):
         con = sqlite3.connect(self.db_path)
         for item in con.execute('select distinct source from testtime'):
             projectname = item[0]
-            for test in con.execute('select test, avg(duration) from testtime where source=? group by test order by avg(duration) desc', (projectname,)):
+            for test in con.execute(
+                    'select test, avg(duration) from testtime where source=? '
+                    'group by test order by avg(duration) desc',
+                    (projectname,)
+            ):
                 print('    %.2f: %s' % (test[1], test[0]))
 
         con.close()

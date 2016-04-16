@@ -13,7 +13,7 @@ install:
   - python setup.py develop
 
 script:
-  - flake8 paratest
+  - flake8 paratest --stat --count
   - py.test paratest
 
 after_success:
