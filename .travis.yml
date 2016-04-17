@@ -13,7 +13,7 @@ install:
   - python setup.py develop
 
 script:
-  - flake8 paratest --stat --count
+  - flake8 paratest tests --stat --count
   - py.test tests/acceptance -p no:cov
   - py.test tests/unit tests/integration
 

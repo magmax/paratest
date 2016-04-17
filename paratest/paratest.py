@@ -555,7 +555,7 @@ class Persistence(object):
 
     def show(self):
         if not os.path.exists(self.db_path):
-            print("No database found")
+            print("No database was found")
             return
         con = sqlite3.connect(self.db_path)
         for item in con.execute('select distinct source from testtime'):
