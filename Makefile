@@ -1,8 +1,8 @@
 all: test
 
-test: code_analysis test_unittest test_acceptance
+test: code_analysis test_unit test_acceptance
 
-test_unittest:
+test_unit:
 	py.test tests/unit tests/integration
 
 test_acceptance:
