@@ -332,7 +332,7 @@ class Paratest(object):
                     'OK' if result.success else 'FAIL',
                 )
                 durations[t] += result.duration
-        bucklet = max(durations.values())
+        bucklet = max(durations.values()) if durations else 0
         total = bucklet * len(durations)
         msg += "\nIdle time: %.4fs\n" % (total - sum(durations.values()))
         logger.info(msg)
