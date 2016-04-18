@@ -397,7 +397,6 @@ class Worker(threading.Thread):
             self.run_script_teardown_test()
         self.run_script_teardown_workspace()
         logger.info("Worker %s has finished.", self.name)
-        print("Worker %s has finished.", self.name)
 
     def run_script_setup_workspace(self):
         self._run_script(
