@@ -10,7 +10,7 @@ python:
 
 install:
   - python setup.py install
-  - pip install pytest pytest-cov flake8 coveralls
+  - pip install pytest pytest-cov flake8 coveralls pexpect
   - python setup.py develop
 
 script:
