@@ -11,7 +11,8 @@ class RunTest(unittest.TestCase):
             os.remove(self.db_file)
 
     def test_basic(self):
-        p = pexpect.spawn('paratest run --plugin Dummy --path-db=%s -vv' % self.db_file)
+        p = pexpect.spawn('paratest run --plugin Dummy --path-db=%s -vv'
+                          % self.db_file)
         p.expect('Global Report')
         p.expect(pexpect.EOF)
         assert not p.isalive()
