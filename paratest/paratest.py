@@ -3,14 +3,16 @@ import sys
 import shutil
 import tempfile
 import argparse
-import queue
 import threading
 import logging
 import time
 from yapsy.PluginManager import PluginManager
 from subprocess import Popen, PIPE
 import sqlite3
-
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 logger = logging.getLogger('paratest')
 shared_queue = queue.PriorityQueue()
