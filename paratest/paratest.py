@@ -129,6 +129,7 @@ def main():
 
     args = parser.parse_args()
     configure_logging(args.verbosity)
+
     scripts = Scripts(
         setup=args.setup,
         setup_workspace=args.setup_workspace,
@@ -144,32 +145,37 @@ def main():
         else None
     )
     try:
-        persistence = Persistence(
-            args.path_db,
-            args.project_name or args.source,
-        )
-        paratest = Paratest(
-            args.workers,
-            scripts,
-            args.source,
-            workspace_path,
-            args.output_path,
-            args.test_pattern,
-            persistence,
-        )
-        if args.action == 'plugins':
-            return paratest.list_plugins()
-        if args.action == 'run':
-            persistence.initialize()
-            return paratest.run(args.plugin)
-        if args.action == 'show':
-            return persistence.show()
+        process(args, scripts, workspace_path)
     except Abort as e:
         logger.critical(e)
         sys.exit(2)
     finally:
         if args.workspace_path is None:
             shutil.rmtree(workspace_path)
+
+
+def process(args, scripts, workspace_path):
+    persistence = Persistence(
+        args.path_db,
+        args.project_name or args.source,
+    )
+    paratest = Paratest(
+        args.workers,
+        scripts,
+        args.source,
+        workspace_path,
+        args.output_path,
+        args.test_pattern,
+        persistence,
+    )
+
+    if args.action == 'plugins':
+        return paratest.list_plugins()
+    elif args.action == 'run':
+        persistence.initialize()
+        return paratest.run(args.plugin)
+    elif args.action == 'show':
+        return persistence.show()
 
 
 def run_script(script, **kwargs):
@@ -449,26 +455,8 @@ class Worker(threading.Thread):
         )
         try:
             start = time.time()
-            result = Popen(
-                test_cmd,
-                shell=True,
-                stdout=PIPE,
-                stderr=PIPE,
-                cwd=self.workspace_path,
-            )
-            stdout, stderr = result.communicate()
+            self.execute(test_cmd, test_name)
             duration = time.time() - start
-            if stdout:
-                logger.info(stdout.decode("utf-8"))
-            if stderr:
-                logger.warning(stderr.decode("utf-8"))
-            if result.returncode != 0:
-                raise Exception(
-                    "Test %s failed with code %s",
-                    test_name,
-                    result.errorcode,
-                )
-
             self.persistence.add(test_name, duration)
             report = Report(name=test_name, duration=duration, success=True)
         except Exception as e:
@@ -478,6 +466,26 @@ class Worker(threading.Thread):
             raise
         finally:
             self.report.append(report)
+
+    def execute(self, test_cmd, test_name):
+        result = Popen(
+            test_cmd,
+            shell=True,
+            stdout=PIPE,
+            stderr=PIPE,
+            cwd=self.workspace_path,
+        )
+        stdout, stderr = result.communicate()
+        if stdout:
+            logger.info(stdout.decode("utf-8"))
+        if stderr:
+            logger.warning(stderr.decode("utf-8"))
+        if result.returncode != 0:
+            raise Exception(
+                "Test %s failed with code %s",
+                test_name,
+                result.errorcode,
+            )
 
 
 class Persistence(object):

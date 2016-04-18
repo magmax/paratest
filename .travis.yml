@@ -15,7 +15,7 @@ install:
 script:
   - flake8 paratest tests --stat --count
   - py.test tests/acceptance -p no:cov
-  - py.test tests/unit tests/integration
+  - py.test tests/unit tests/integration --cov-report=term-missing --cov paratest
 
 after_success:
   - coveralls
