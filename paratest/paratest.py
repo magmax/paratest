@@ -373,7 +373,7 @@ class Worker(threading.Thread):
             *args,
             **kwargs
     ):
-        super().__init__(*args, **kwargs)
+        super(Worker, self).__init__(*args, **kwargs)
         self.plugin = plugin
         self.scripts = scripts
         self.source_path = source_path
