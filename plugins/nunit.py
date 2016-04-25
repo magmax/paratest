@@ -1,9 +1,7 @@
-import time
 import os
 import re
 import logging
 from yapsy.IPlugin import IPlugin
-from subprocess import Popen, PIPE
 
 logger = logging.getLogger('paratest')
 
