@@ -457,7 +457,7 @@ class Worker(threading.Thread):
         )
         try:
             start = time.time()
-            cmd = test_cmd.format(ID=self.name, TID_NAME=test_name)
+            cmd = test_cmd.format(ID=self.name, TID_NAME=test_name, WORKSPACE=self.workspace_path)
             self.execute(cmd, test_name)
             duration = time.time() - start
             self.persistence.add(test_name, duration)
@@ -471,6 +471,7 @@ class Worker(threading.Thread):
             self.report.append(report)
 
     def execute(self, test_cmd, test_name):
+        logger.debug("Running command: %s", test_cmd)
         result = Popen(
             test_cmd,
             shell=True,
@@ -480,14 +481,14 @@ class Worker(threading.Thread):
         )
         stdout, stderr = result.communicate()
         if stdout:
-            logger.info(stdout.decode("utf-8"))
+            logger.debug(stdout.decode("utf-8"))
         if stderr:
             logger.warning(stderr.decode("utf-8"))
         if result.returncode != 0:
             raise Exception(
                 "Test %s failed with code %s",
                 test_name,
-                result.errorcode,
+                result.returncode,
             )
 
 
