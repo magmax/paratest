@@ -335,7 +335,7 @@ class Paratest(object):
         bucklet = max(durations.values()) if durations else 0
         total = bucklet * len(durations)
         msg += "\nIdle time: %.4fs\n" % (total - sum(durations.values()))
-        logger.info(msg)
+        print(msg)
 
     def wait_workers(self):
         logger.debug("wait for all workers to finish")
