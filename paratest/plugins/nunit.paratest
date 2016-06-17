@@ -1,9 +1,0 @@
-[Core]
-Name = Nunit
-Module = nunit
-
-[Documentation]
-Author = Daniel Aguado Araujo
-Version = 1.0
-Website =
-Description = Nunit plugin for ParaTest

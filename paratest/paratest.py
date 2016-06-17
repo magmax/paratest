@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 import shutil
 import tempfile
 import argparse
@@ -237,8 +238,14 @@ class Paratest(object):
         self.output_path = output_path
         self.test_pattern = test_pattern
         self._workers = []
+        datapath = (
+            os.path.join(os.getenv('ProgramData'), 'paratest')
+            if platform.system().lower() == 'windows'
+            else '/usr/share/paratest'
+        )
         plugin_places = [
             os.path.join(THIS_DIR, "plugins"),
+            datapath,
         ]
         logger.debug("Loading plugins from: %s", plugin_places)
         self.pluginmgr = PluginManager()
@@ -457,7 +464,11 @@ class Worker(threading.Thread):
         )
         try:
             start = time.time()
-            cmd = test_cmd.format(ID=self.name, TID_NAME=test_name, WORKSPACE=self.workspace_path)
+            cmd = test_cmd.format(
+                ID=self.name,
+                TID_NAME=test_name,
+                WORKSPACE=self.workspace_path,
+            )
             self.execute(cmd, test_name)
             duration = time.time() - start
             self.persistence.add(test_name, duration)

@@ -1,9 +1,0 @@
-[Core]
-Name = NunitSuites
-Module = NunitSuites
-
-[Documentation]
-Author = Miguel Angel Garcia
-Version = 1.0
-Website = http://magmax.org
-Description = Nunit plugin for ParaTest splitting by suites
