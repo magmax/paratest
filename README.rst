@@ -1,3 +1,13 @@
+====================  =================================================================================
+Tests                 |travis| |coveralls|
+--------------------  ---------------------------------------------------------------------------------
+Downloads             |pip dm| |pip dw| |pip dd|
+--------------------  ---------------------------------------------------------------------------------
+About                 |pip license| |pip wheel| |pip pyversions| |pip implem|
+--------------------  ---------------------------------------------------------------------------------
+Status                |version| |status|
+====================  =================================================================================
+
 Parallelizes test executions.
 
 It allows to parallelize the integration/acceptance tests execution in different environments. This way they will took much less time to finish.
@@ -53,3 +63,61 @@ Plugins should implement the next interface:
 .. _`TeamCity`: https://www.jetbrains.com/teamcity/
 .. _`Go-CD`: https://www.go.cd/
 .. _`Bamboo`: https://es.atlassian.com/software/bamboo/
+
+
+.. |travis| image:: https://img.shields.io/travis/paratestproject/paratest.svg
+  :target: `Travis`_
+  :alt: Travis results
+
+.. |coveralls| image:: https://img.shields.io/coveralls/paratestproject/paratest.svg
+  :target: `Coveralls`_
+  :alt: Coveralls results_
+
+.. |pip version| image:: https://img.shields.io/pypi/v/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Latest PyPI version
+
+.. |pip dm| image:: https://img.shields.io/pypi/dm/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Last month downloads from pypi
+
+.. |pip dw| image:: https://img.shields.io/pypi/dw/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Last week downloads from pypi
+
+.. |pip dd| image:: https://img.shields.io/pypi/dd/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Yesterday downloads from pypi
+
+.. |pip license| image:: https://img.shields.io/pypi/l/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: License
+
+.. |pip wheel| image:: https://img.shields.io/pypi/wheel/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Wheel
+
+.. |pip pyversions| image::  	https://img.shields.io/pypi/pyversions/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Python versions
+
+.. |pip implem| image::  	https://img.shields.io/pypi/implementation/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Python interpreters
+
+.. |status| image::	https://img.shields.io/pypi/status/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Status
+
+.. |version| image:: https://img.shields.io/pypi/v/paratest.svg
+    :target: https://pypi.python.org/pypi/paratest
+    :alt: Status
+
+
+
+.. _Travis: https://travis-ci.org/paratestproject/paratest
+.. _Coveralls: https://coveralls.io/r/paratestproject/paratest
+
+.. _@magmax9: https://twitter.com/magmax9
+
+.. _the Affero license: http://opensource.org/licenses/AGPL-3.0
