@@ -66,10 +66,10 @@ setup(
     },
     include_package_data=True,
     package_dir={
-        'plugins': 'paratest/plugins',
+        'paratest/plugins': 'plugins',
     },
     package_data={
-        'plugins': ['paratest/plugins/*.paratest'],
+        'paratest/plugins': ['plugins/*.paratest', 'plugins/plugin_hook'],
     },
     install_requires=[
         'yapsy == 1.11.223',

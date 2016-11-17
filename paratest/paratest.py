@@ -7,6 +7,7 @@ import argparse
 import threading
 import logging
 import time
+import pkg_resources
 from yapsy.PluginManager import PluginManager
 from subprocess import Popen, PIPE
 import sqlite3
@@ -238,14 +239,14 @@ class Paratest(object):
         self.output_path = output_path
         self.test_pattern = test_pattern
         self._workers = []
-        datapath = (
-            os.path.join(os.getenv('ProgramData'), 'paratest')
-            if platform.system().lower() == 'windows'
-            else '/usr/share/paratest'
+        datapath = pkg_resources.resource_filename(
+            pkg_resources.Requirement.parse('paratest'),
+            'plugin_hook'
         )
         plugin_places = [
             os.path.join(THIS_DIR, "plugins"),
             datapath,
+            '/etc/paratest/plugins',
         ]
         logger.debug("Loading plugins from: %s", plugin_places)
         self.pluginmgr = PluginManager()

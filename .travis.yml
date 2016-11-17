@@ -11,7 +11,7 @@ python:
 
 install:
   - python setup.py install
-  - pip install pytest pytest-cov flake8 coveralls pexpect
+  - pip install pytest pytest-cov flake8 coveralls pexpect paratest-dummy
   - python setup.py develop
 
 script:
