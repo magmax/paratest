@@ -1,4 +1,3 @@
-import sys
 import pkg_resources
 
 
@@ -24,7 +23,9 @@ class Plugins(object):
     def load(self, plugin_name):
         if plugin_name not in self._plugins:
             plugin = self.get_plugin(plugin_name)
-            self._plugins[plugin_name] = plugin.load_entry_point(self._package, 'find')
+            self._plugins[plugin_name] = plugin.load_entry_point(
+                self._package, 'find'
+            )
         return self._plugins[plugin_name]
 
     def get_plugin(self, plugin_name):
@@ -35,7 +36,9 @@ class Plugins(object):
 
     @property
     def plugin_list(self):
-        dists, errors = pkg_resources.WorkingSet().find_plugins(self.plugin_path)
+        dists, errors = pkg_resources.WorkingSet().find_plugins(
+            self.plugin_path
+        )
         for dist in dists:
             if self._package in dist.get_entry_map():
                 name = (
