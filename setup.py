@@ -3,7 +3,6 @@
 import sys
 from setuptools import setup, find_packages
 from setuptools.command.test import test as TestCommand
-from paratest.__version__ import __version__
 
 
 def read_description():
@@ -34,7 +33,7 @@ class PyTest(TestCommand):
 
 setup(
     name='paratest',
-    version=__version__,
+    version='2.0.0',
     description=(
         "Test paralelizer"
     ),
