@@ -74,7 +74,6 @@ setup(
         'paratest/plugins': ['plugins/*.paratest', 'plugins/plugin_hook'],
     },
     install_requires=[
-        'yapsy == 1.11.223',
     ],
     tests_require=[
         'pexpect',

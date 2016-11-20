@@ -6,14 +6,14 @@ import argparse
 import threading
 import logging
 import time
-import pkg_resources
-from yapsy.PluginManager import PluginManager
 from subprocess import Popen, PIPE
 import sqlite3
 try:
     import queue
 except ImportError:
     import Queue as queue
+from .plugins import Plugins
+
 
 logger = logging.getLogger('paratest')
 shared_queue = queue.PriorityQueue()
@@ -173,7 +173,7 @@ def process(args, scripts, workspace_path):
     )
 
     if args.action == 'plugins':
-        return paratest.list_plugins()
+        return paratest.list_plugins(args.verbosity > 0)
     elif args.action == 'run':
         persistence.initialize()
         return paratest.run(args.plugin)
@@ -238,20 +238,6 @@ class Paratest(object):
         self.output_path = output_path
         self.test_pattern = test_pattern
         self._workers = []
-        datapath = pkg_resources.resource_filename(
-            pkg_resources.Requirement.parse('paratest'),
-            'plugin_hook'
-        )
-        plugin_places = [
-            os.path.join(THIS_DIR, "plugins"),
-            datapath,
-            '/etc/paratest/plugins',
-        ]
-        logger.debug("Loading plugins from: %s", plugin_places)
-        self.pluginmgr = PluginManager()
-        self.pluginmgr.setPluginInfoExtension('paratest')
-        self.pluginmgr.setPluginPlaces(plugin_places)
-        self.pluginmgr.collectPlugins()
         self.persistence = persistence
 
         if not os.path.exists(self.source_path):
@@ -259,20 +245,27 @@ class Paratest(object):
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
-    def list_plugins(self):
+    def list_plugins(self, verbose):
+        plugins = Plugins()
+        plugin_list = list(plugins.plugin_list)
+        if len(plugin_list) == 0:
+            print('No plugin was found')
+            return
         msg = "Available plugins are:\n"
-        for plugin in self.pluginmgr.getAllPlugins():
-            msg += "  %s" % plugin.name
+        for name, data in plugin_list:
+            msg += (
+                "  %s (%s)\n" % (name, data.version)
+                if verbose
+                else "  %s\n" % name
+            )
         print(msg)
 
-    def run(self, plugin):
+    def run(self, plugin_name):
         try:
-            plugin = self.pluginmgr.getPluginByName(plugin)
-            pluginobj = plugin.plugin_object
-
+            plugin = Plugins().load(plugin_name)
             self.run_script_setup()
-            test_number = self.queue_tests(pluginobj)
-            self.create_workers(pluginobj, self.num_of_workers(test_number))
+            test_number = self.queue_tests(plugin)
+            self.create_workers(self.num_of_workers(test_number))
             self.start_workers()
             self.wait_workers()
             self.run_script_teardown()
@@ -290,9 +283,9 @@ class Paratest(object):
         if run_script(self.scripts.teardown, path=self.workspace_path):
             raise Abort('The teardown script failed, but nothing can be done.')
 
-    def queue_tests(self, pluginobj):
+    def queue_tests(self, find):
         tids = 0
-        pluginobjs = pluginobj.find(
+        pluginobjs = find(
             self.source_path,
             test_pattern=None,
             file_pattern=self.test_pattern,
@@ -304,10 +297,9 @@ class Paratest(object):
             tids += 1
         return tids
 
-    def create_workers(self, pluginobj, workers):
+    def create_workers(self, workers):
         for i in range(workers):
             t = Worker(
-                pluginobj,
                 scripts=self.scripts,
                 workspace_path=self.workspace_path,
                 source_path=self.source_path,
@@ -371,7 +363,6 @@ class Report(object):
 class Worker(threading.Thread):
     def __init__(
             self,
-            plugin,
             scripts,
             workspace_path,
             source_path,
@@ -381,7 +372,6 @@ class Worker(threading.Thread):
             **kwargs
     ):
         super(Worker, self).__init__(*args, **kwargs)
-        self.plugin = plugin
         self.scripts = scripts
         self.source_path = source_path
         self.output_path = output_path
