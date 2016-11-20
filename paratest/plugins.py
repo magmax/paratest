@@ -60,5 +60,6 @@ def main():
     plugin = plugins.load('dummy')
     print(plugin)
 
+
 if __name__ == '__main__':
     main()
