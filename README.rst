@@ -53,17 +53,43 @@ Contribute
 Plugins
 -------
 
-Plugins should implement the next interface:
+Writting a plugin is quite easy. You can see the `paratest-dummy`_ as example. Just two steps are required:
 
-- ``find(path, pattern)``: returns a list of test unique names ("TID", or "Test ID"), searching from ``path`` and filtering by ``pattern``.
-- ``run(id, tid, workspace, output_path)``: receives the worker ``id``, one ``tid`` returned by ``find`` in order to execute it, the ``workspace`` path to take input files and the ``output`` path to leave results.
+
+Write the plugin methods
+________________________
+
+Currently, just one method is required:
+
+``def find(path, test_pattern, file_pattern, output_path)``
+
+It should return a dict or a generator for tuples.
+
+
+Register the entrypoint
+_______________________
+
+
+The second step is to create a ``pip`` package with the entrypoint ``find`` within the group ``paratest``. This should be done in the ``setup.py`` file. Example:
+
+.. code::
+
+   from setuptools import setup, find_packages
+
+   setup(
+     name='whatever',
+     version='0.0.1',
+     entry_points={
+       'paratest': 'find = whatever:find'
+     }
+   )
 
 
 .. _`Jenkins`: https://jenkins.io
 .. _`TeamCity`: https://www.jetbrains.com/teamcity/
 .. _`Go-CD`: https://www.go.cd/
 .. _`Bamboo`: https://es.atlassian.com/software/bamboo/
-
+.. _`paratest-dummy`: https://github.com/paratestproject/paratest-dummy
 
 .. |travis| image:: https://img.shields.io/travis/paratestproject/paratest.svg
   :target: `Travis`_
