@@ -16,7 +16,7 @@ class ShowTest(unittest.TestCase):
         p.expect(pexpect.EOF)
 
     def test_after_run(self):
-        s = pexpect.spawn('paratest run --path-db=%s --plugin Dummy -vv'
+        s = pexpect.spawn('paratest run --path-db=%s --plugin dummy -vv'
                           % self.db_file)
         s.expect('Finished successfully')
         s.expect(pexpect.EOF)
