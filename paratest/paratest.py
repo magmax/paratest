@@ -26,6 +26,38 @@ class Abort(Exception):
     pass
 
 
+class Scripts(object):
+    setup = None
+    setup_workspace = None
+    setup_test = None
+    teardown_test = None
+    teardown_workspace = None
+    teardown = None
+
+
+class Configuration(object):
+    scripts = Scripts()
+    verbosity = 0
+    workers = 1
+
+    source = None
+    path_db = None
+    project_name = None
+    output_path = None
+    test_pattern = None
+
+    workspace_path = None
+
+    def load_from(self, config_file):
+        with open(config_file) as fd:
+            for line in fd.readlines():
+                key, value = line.split('=', 1)
+                if key.startswith('script.'):
+                    setattr(self.scripts, key[len('script.'):], value)
+                else:
+                    setattr(self, key, value)
+
+
 def configure_logging(verbosity):
     msg_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     VERBOSITIES = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG]
@@ -42,6 +74,13 @@ def main():
     parser.add_argument('action',
                         choices=('plugins', 'run', 'show'),
                         help='Action to perform')
+    parser.add_argument(
+        '--config',
+        help="Allows to select a configuration file that gathers all options.")
+    parser.add_argument(
+        '--connstr',
+        help="Connection string to be used.")
+
     parser.add_argument(
         '--source',
         default='.',
@@ -64,12 +103,6 @@ def main():
         dest='output_path',
         default='output',
         help='Path where store the output file from tests execution',
-    )
-    parser.add_argument(
-        '--path-plugins',
-        dest='plugins',
-        default='plugins',
-        help='Path to search for plugins',
     )
     parser.add_argument(
         '--path-db',
@@ -133,51 +166,61 @@ def main():
     args = parser.parse_args()
     configure_logging(args.verbosity)
 
-    scripts = Scripts(
-        setup=args.setup,
-        setup_workspace=args.setup_workspace,
-        setup_test=args.setup_test,
-        teardown_test=args.teardown_test,
-        teardown_workspace=args.teardown_workspace,
-        teardown=args.teardown,
-    )
+    if args.path_db:
+        logger.warning(
+            'The argument db-path is deprecated. Use --connstr instead'
+        )
 
-    workspace_path = (
+    config = Configuration()
+    config.scripts.setup = args.setup
+    config.scripts.setup_workspace = args.setup_workspace
+    config.scripts.setup_test = args.setup_test
+    config.scripts.teardown_test = args.teardown_test
+    config.scripts.teardown_workspace = args.teardown_workspace
+    config.scripts.teardown = args.teardown
+
+    config.source = args.source
+    config.path_db = args.path_db
+    config.project_name = args.project_name
+    config.output_path = args.output_path
+    config.test_pattern = args.test_pattern
+
+    config.workspace_path = (
         tempfile.mkdtemp()
         if args.workspace_path is None
         else None
     )
     try:
-        process(args, scripts, workspace_path)
+        process(config, args.action, args.plugin)
     except Abort as e:
         logger.critical(e)
         sys.exit(2)
     finally:
         if args.workspace_path is None:
-            shutil.rmtree(workspace_path)
+            shutil.rmtree(config.workspace_path)
 
 
-def process(args, scripts, workspace_path):
+def process(config, action, plugin):
     persistence = Persistence(
-        args.path_db,
-        args.project_name or args.source,
+        config.path_db,
+        config.project_name or config.source,
     )
     paratest = Paratest(
-        args.workers,
-        scripts,
-        args.source,
-        workspace_path,
-        args.output_path,
-        args.test_pattern,
+        config.workers,
+        config.scripts,
+        config.source,
+        config.workspace_path,
+        config.output_path,
+        config.test_pattern,
         persistence,
     )
 
-    if args.action == 'plugins':
-        return paratest.list_plugins(args.verbosity > 0)
-    elif args.action == 'run':
+    if action == 'plugins':
+        return paratest.list_plugins(config.verbosity > 0)
+    elif action == 'run':
         persistence.initialize()
-        return paratest.run(args.plugin)
-    elif args.action == 'show':
+        return paratest.run(plugin)
+    elif action == 'show':
         return persistence.show()
 
 
@@ -200,24 +243,6 @@ def run_script(script, **kwargs):
     if err != '':
         logger.warning(err)
     return result.returncode
-
-
-class Scripts(object):
-    def __init__(
-            self,
-            setup,
-            setup_workspace,
-            setup_test,
-            teardown_test,
-            teardown_workspace,
-            teardown,
-    ):
-        self.setup = setup
-        self.setup_workspace = setup_workspace
-        self.setup_test = setup_test
-        self.teardown_test = teardown_test
-        self.teardown_workspace = teardown_workspace
-        self.teardown = teardown
 
 
 class Paratest(object):
