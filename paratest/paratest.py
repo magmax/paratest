@@ -18,7 +18,6 @@ from .persistence import Persistence
 logger = logging.getLogger('paratest')
 shared_queue = queue.PriorityQueue()
 shared_queue_retries = queue.PriorityQueue()
-INFINITE = sys.maxsize
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -226,6 +225,7 @@ def process(config, action, plugin):
 
 class Test(object):
     FINISH = None
+    INFINITE = sys.maxsize
 
     def __init__(self, name, command=FINISH, priority=INFINITE):
         self.name = name
@@ -450,7 +450,7 @@ class Worker(threading.Thread):
                 break
             try:
                 self.process(test)
-            except Exception as e:
+            except Exception:
                 self.errors = True
             self.queue.task_done()
 
