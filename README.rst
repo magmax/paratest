@@ -27,7 +27,9 @@ This may be a hard task, and sadly Paratest cannot help there.
 
 But with some scripts to clone an existent workspace, Paratest can divide the tests between any number of workspaces, creating them on demand, and running the tests on them. Resources put the limits.
 
-Another advantage of Paratest is the test order: Paratest remembers the time expent in each test and will reorder them to get the most of your infrastructure.
+Another advantage of Paratest is the test order: Paratest remembers the time spent in each test and will reorder them to get the most of your infrastructure.
+
+And finally, Paratest can retry failed tests, in order to avoid unstable tests.
 
 
 Usage
