@@ -17,8 +17,8 @@ from .persistence import Persistence
 
 logger = logging.getLogger('paratest')
 shared_queue = queue.PriorityQueue()
+shared_queue_retries = queue.PriorityQueue()
 INFINITE = sys.maxsize
-FINISH = object()
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -77,9 +77,9 @@ def main():
     parser.add_argument(
         '--config',
         help="Allows to select a configuration file that gathers all options.")
-    parser.add_argument(
-        '--connstr',
-        help="Connection string to be used.")
+    # parser.add_argument(
+    #     '--connstr',
+    #     help="Connection string to be used.")
 
     parser.add_argument(
         '--source',
@@ -166,7 +166,7 @@ def main():
     args = parser.parse_args()
     configure_logging(args.verbosity)
 
-    if args.path_db:
+    if False and args.path_db:
         logger.warning(
             'The argument db-path is deprecated. Use --connstr instead'
         )
@@ -222,6 +222,29 @@ def process(config, action, plugin):
         return paratest.run(plugin)
     elif action == 'show':
         return persistence.show()
+
+
+class Test(object):
+    FINISH = None
+
+    def __init__(self, name, command=FINISH, priority=INFINITE):
+        self.name = name
+        self.priority = priority
+        self.command = command
+
+    def __lt__(self, other):
+        return self.priority < other.priority
+
+    @property
+    def must_finish(self):
+        return self.command is self.FINISH
+
+    def solved_command(self, worker_id, workspace):
+        return self.command.format(
+            ID=worker_id,
+            TID_NAME=self.name,
+            WORKSPACE=workspace,
+        )
 
 
 def run_script(script, **kwargs):
@@ -317,8 +340,12 @@ class Paratest(object):
             output_path=self.output_path,
         )
         for test_name, test_cmd in pluginobjs:
-            tid = (test_name, test_cmd)
-            shared_queue.put((self.persistence.get_priority(test_name), tid))
+            test = Test(
+                test_name,
+                test_cmd,
+                self.persistence.get_priority(test_name),
+            )
+            shared_queue.put(test)
             tids += 1
         return tids
 
@@ -331,6 +358,7 @@ class Paratest(object):
                 output_path=self.output_path,
                 persistence=self.persistence,
                 name=str(i),
+                queue=shared_queue,
             )
             self._workers.append(t)
 
@@ -341,7 +369,7 @@ class Paratest(object):
         logger.debug("start workers")
         for t in self._workers:
             t.start()
-            shared_queue.put((INFINITE, FINISH))
+            shared_queue.put(Test('finish'))
 
     def print_report(self):
         msg = 'Global Report:\n'
@@ -389,6 +417,7 @@ class Worker(threading.Thread):
     def __init__(
             self,
             scripts,
+            queue,
             workspace_path,
             source_path,
             output_path,
@@ -406,23 +435,24 @@ class Worker(threading.Thread):
             os.makedirs(self.workspace_path)
         self.errors = None
         self.report = []
+        self.queue = queue
 
     def run(self):
         print("%s START" % self.name)
         logger.debug("%s START" % self.name)
-        tid = object()
         self.run_script_setup_workspace()
         self.errors = False
-        while tid is not FINISH:
+        while True:
             self.run_script_setup_test()
 
-            _, tid = shared_queue.get()
+            test = self.queue.get()
+            if test.must_finish:
+                break
             try:
-                if tid is not FINISH:
-                    self.process(tid)
-            except:
+                self.process(test)
+            except Exception as e:
                 self.errors = True
-            shared_queue.task_done()
+            self.queue.task_done()
 
             self.run_script_teardown_test()
         self.run_script_teardown_workspace()
@@ -465,41 +495,36 @@ class Worker(threading.Thread):
         ):
             raise Abort(message)
 
-    def process(self, tid):
-        test_name, test_cmd = tid
+    def process(self, test):
         logger.info(
             'Runner {runner} running test {test} on {workspace}.'
             ' {left} tests left'
             .format(
                 runner=self.name,
-                test=test_name,
+                test=test.name,
                 workspace=self.workspace_path,
                 left=shared_queue.qsize(),
             )
         )
         try:
             start = time.time()
-            cmd = test_cmd.format(
-                ID=self.name,
-                TID_NAME=test_name,
-                WORKSPACE=self.workspace_path,
-            )
-            self.execute(cmd, test_name)
+            self.execute(test)
             duration = time.time() - start
-            self.persistence.add(test_name, duration)
-            report = Report(name=test_name, duration=duration, success=True)
+            self.persistence.add(test.name, duration)
+            report = Report(name=test.name, duration=duration, success=True)
         except Exception as e:
             duration = time.time() - start
-            logger.error("Suite %s failed due to: %s", tid, e)
-            report = Report(name=test_name, duration=duration, success=False)
+            logger.error("Suite %s failed due to: %s", test, e)
+            report = Report(name=test.name, duration=duration, success=False)
             raise
         finally:
             self.report.append(report)
 
-    def execute(self, test_cmd, test_name):
-        logger.debug("Running command: %s", test_cmd)
+    def execute(self, test):
+        command = test.solved_command(self.name, self.workspace_path)
+        logger.debug("Running command: %s", command)
         result = Popen(
-            test_cmd,
+            command,
             shell=True,
             stdout=PIPE,
             stderr=PIPE,
@@ -513,7 +538,7 @@ class Worker(threading.Thread):
         if result.returncode != 0:
             raise Exception(
                 "Test %s failed with code %s",
-                test_name,
+                test.name,
                 result.returncode,
             )
 
