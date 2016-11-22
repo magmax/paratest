@@ -6,6 +6,7 @@ import argparse
 import threading
 import logging
 import time
+import copy
 from subprocess import Popen, PIPE
 try:
     import queue
@@ -162,6 +163,13 @@ def main():
         help='Script to finalize; it will be run once at the end'
     )
 
+    parser.add_argument(
+        '--retry',
+        default=0,
+        type=int,
+        help='Times to retry a failing test'
+    )
+
     args = parser.parse_args()
     configure_logging(args.verbosity)
 
@@ -183,6 +191,7 @@ def main():
     config.project_name = args.project_name
     config.output_path = args.output_path
     config.test_pattern = args.test_pattern
+    config.max_retries = args.retry
 
     config.workspace_path = (
         tempfile.mkdtemp()
@@ -205,12 +214,7 @@ def process(config, action, plugin):
         config.project_name or config.source,
     )
     paratest = Paratest(
-        config.workers,
-        config.scripts,
-        config.source,
-        config.workspace_path,
-        config.output_path,
-        config.test_pattern,
+        config,
         persistence,
     )
 
@@ -231,6 +235,7 @@ class Test(object):
         self.name = name
         self.priority = priority
         self.command = command
+        self.retries = 0
 
     def __lt__(self, other):
         return self.priority < other.priority
@@ -245,6 +250,11 @@ class Test(object):
             TID_NAME=self.name,
             WORKSPACE=workspace,
         )
+
+    def __str__(self):
+        if self.retries:
+            return '%s (retry %s)' % (self.name, self.retries)
+        return self.name
 
 
 def run_script(script, **kwargs):
@@ -269,28 +279,14 @@ def run_script(script, **kwargs):
 
 
 class Paratest(object):
-    def __init__(
-            self,
-            workspace_num,
-            scripts,
-            source_path,
-            workspace_path,
-            output_path,
-            test_pattern,
-            persistence,
-    ):
-        self.workspace_num = workspace_num
-        self.workspace_path = workspace_path
-        self.scripts = scripts
-        self.source_path = source_path
-        self.output_path = output_path
-        self.test_pattern = test_pattern
+    def __init__(self, config, persistence):
         self._workers = []
+        self.config = config
         self.persistence = persistence
 
-        if not os.path.exists(self.source_path):
-            os.makedirs(self.source_path)
-        if not os.path.exists(self.output_path):
+        if not os.path.exists(config.source):
+            os.makedirs(self.source)
+        if not os.path.exists(config.output_path):
             os.makedirs(self.output_path)
 
     def list_plugins(self, verbose):
@@ -324,20 +320,22 @@ class Paratest(object):
             self.print_report()
 
     def run_script_setup(self):
-        if run_script(self.scripts.setup, path=self.workspace_path):
+        if run_script(self.config.scripts.setup,
+                      path=self.config.workspace_path):
             raise Abort('The setup script failed. aborting.')
 
     def run_script_teardown(self):
-        if run_script(self.scripts.teardown, path=self.workspace_path):
+        if run_script(self.config.scripts.teardown,
+                      path=self.config.workspace_path):
             raise Abort('The teardown script failed, but nothing can be done.')
 
     def queue_tests(self, find):
         tids = 0
         pluginobjs = find(
-            self.source_path,
+            self.config.source,
             test_pattern=None,
-            file_pattern=self.test_pattern,
-            output_path=self.output_path,
+            file_pattern=self.config.test_pattern,
+            output_path=self.config.output_path,
         )
         for test_name, test_cmd in pluginobjs:
             test = Test(
@@ -352,10 +350,7 @@ class Paratest(object):
     def create_workers(self, workers):
         for i in range(workers):
             t = Worker(
-                scripts=self.scripts,
-                workspace_path=self.workspace_path,
-                source_path=self.source_path,
-                output_path=self.output_path,
+                config=self.config,
                 persistence=self.persistence,
                 name=str(i),
                 queue=shared_queue,
@@ -363,7 +358,7 @@ class Paratest(object):
             self._workers.append(t)
 
     def num_of_workers(self, test_number):
-        return min(self.workspace_num, test_number)
+        return min(self.config.workers, test_number)
 
     def start_workers(self):
         logger.debug("start workers")
@@ -380,7 +375,7 @@ class Paratest(object):
             for result in t.report:
                 msg += '   %.4fs %s ... %s\n' % (
                     result.duration,
-                    result.name,
+                    result.test,
                     'OK' if result.success else 'FAIL',
                 )
                 durations[t] += result.duration
@@ -407,8 +402,8 @@ class Paratest(object):
 
 
 class Report(object):
-    def __init__(self, name, duration, success):
-        self.name = name
+    def __init__(self, test, duration, success):
+        self.test = copy.copy(test)
         self.duration = duration
         self.success = success
 
@@ -416,21 +411,17 @@ class Report(object):
 class Worker(threading.Thread):
     def __init__(
             self,
-            scripts,
+            name,
+            config,
             queue,
-            workspace_path,
-            source_path,
-            output_path,
             persistence,
             *args,
             **kwargs
     ):
         super(Worker, self).__init__(*args, **kwargs)
-        self.scripts = scripts
-        self.source_path = source_path
-        self.output_path = output_path
+        self.config = config
         self.persistence = persistence
-        self.workspace_path = os.path.join(workspace_path, self.name)
+        self.workspace_path = os.path.join(config.workspace_path, self.name)
         if not os.path.exists(self.workspace_path):
             os.makedirs(self.workspace_path)
         self.errors = None
@@ -452,6 +443,10 @@ class Worker(threading.Thread):
                 self.process(test)
             except Exception:
                 self.errors = True
+                if test.retries < self.config.max_retries:
+                    test.retries += 1
+                    self.queue.put(test)
+
             self.queue.task_done()
 
             self.run_script_teardown_test()
@@ -460,7 +455,7 @@ class Worker(threading.Thread):
 
     def run_script_setup_workspace(self):
         self._run_script(
-            self.scripts.setup_workspace,
+            self.config.scripts.setup_workspace,
             'Setup workspace failed on worker %s '
             'and could not initialize the environment. Worker is dead'
             % self.name
@@ -468,20 +463,20 @@ class Worker(threading.Thread):
 
     def run_script_teardown_workspace(self):
         self._run_script(
-            self.scripts.teardown_workspace,
+            self.config.scripts.teardown_workspace,
             'Teardown workspace failed on worker %s. Worker is dead'
             % self.name
         )
 
     def run_script_setup_test(self):
         self._run_script(
-            self.scripts.setup_test,
+            self.config.scripts.setup_test,
             "setup_test failed on worker %s. Worker is dead" % self.name
         )
 
     def run_script_teardown_test(self):
         self._run_script(
-            self.scripts.teardown_test,
+            self.config.scripts.teardown_test,
             "teardown_test failed on worker %s. Worker is dead" % self.name
         )
 
@@ -490,8 +485,8 @@ class Worker(threading.Thread):
                 script,
                 id=self.name,
                 workspace=self.workspace_path,
-                source=self.source_path,
-                output=self.output_path,
+                source=self.config.source,
+                output=self.config.output_path,
         ):
             raise Abort(message)
 
@@ -511,11 +506,11 @@ class Worker(threading.Thread):
             self.execute(test)
             duration = time.time() - start
             self.persistence.add(test.name, duration)
-            report = Report(name=test.name, duration=duration, success=True)
+            report = Report(test=test, duration=duration, success=True)
         except Exception as e:
             duration = time.time() - start
             logger.error("Suite %s failed due to: %s", test, e)
-            report = Report(name=test.name, duration=duration, success=False)
+            report = Report(test=test, duration=duration, success=False)
             raise
         finally:
             self.report.append(report)
