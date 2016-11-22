@@ -1,6 +1,6 @@
 import os
 import unittest
-from paratest.paratest import Persistence
+from paratest.persistence import Persistence
 
 
 class PersistenceTest(unittest.TestCase):
