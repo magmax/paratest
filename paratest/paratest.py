@@ -230,6 +230,7 @@ def process(config, action, plugin):
 class Test(object):
     FINISH = None
     INFINITE = sys.maxsize
+    RETRY_PENALTY = 100000
 
     def __init__(self, name, command=FINISH, priority=INFINITE):
         self.name = name
@@ -250,6 +251,10 @@ class Test(object):
             TID_NAME=self.name,
             WORKSPACE=workspace,
         )
+
+    def increase_retries(self):
+        self.retries += 1
+        self.priority += self.RETRY_PENALTY
 
     def __str__(self):
         if self.retries:
@@ -442,16 +447,20 @@ class Worker(threading.Thread):
             try:
                 self.process(test)
             except Exception:
-                self.errors = True
-                if test.retries < self.config.max_retries:
-                    test.retries += 1
-                    self.queue.put(test)
+                self.failure(test)
 
             self.queue.task_done()
 
             self.run_script_teardown_test()
         self.run_script_teardown_workspace()
         logger.info("Worker %s has finished.", self.name)
+
+    def failure(self, test):
+        if test.retries < self.config.max_retries:
+            test.increase_retries()
+            self.queue.put(test)
+        else:
+            self.errors = True
 
     def run_script_setup_workspace(self):
         self._run_script(
