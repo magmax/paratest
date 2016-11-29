@@ -292,7 +292,7 @@ class Paratest(object):
         if not os.path.exists(config.source):
             os.makedirs(self.source)
         if not os.path.exists(config.output_path):
-            os.makedirs(self.output_path)
+            os.makedirs(config.output_path)
 
     def list_plugins(self, verbose):
         plugins = Plugins()
